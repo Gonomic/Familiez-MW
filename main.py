@@ -5,8 +5,7 @@ from typing import List, Dict, Any
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, text, event
-from sqlalchemy.pool import NullPool
+from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 
