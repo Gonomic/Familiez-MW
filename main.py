@@ -16,7 +16,7 @@ DATABASE_URL = os.getenv(
 )
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:5174,http://localhost:3310"
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://localhost:3310"
 ).split(",")
 
 # Initialize database engine once at startup
