@@ -48,8 +48,11 @@ def read_root() -> Dict[str, str]:
     return {"Hello visitor": "The Familiez Fastapi api lives!"}
 
 @app.get("/pingAPI")
-def ping_api(timestampFE: datetime) -> List[Dict[str, datetime]]:
-    return [{"FE request time": timestampFE, "MW request time": datetime.now()}]
+def ping_api(timestampFE: datetime) -> List[Dict[str, str]]:
+    return [{
+        "FE request time": timestampFE.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3],
+        "MW request time": datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+    }]
 
 @app.get("/pingDB")
 def ping_db(timestampFE: datetime) -> List[Dict[str, Any]]:
@@ -63,7 +66,7 @@ def ping_db(timestampFE: datetime) -> List[Dict[str, Any]]:
             results = results_proxy.fetchall()
             result = [row._asdict() for row in results]
             if result:
-                result[-1]['datetimeMWanswer'] = datetime.now()
+                result[-1]['datetimeMWanswer'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
             return result
     except Exception as e:
         logger.error(f"Error pinging database: {e}")
