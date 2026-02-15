@@ -139,7 +139,8 @@ def get_person_details(
                         PersonPlaceOfBirth,
                         PersonDateOfDeath,
                         PersonPlaceOfDeath,
-                        PersonIsMale
+                        PersonIsMale,
+                        DATE_FORMAT(Timestamp,'%Y-%m-%d %T') as Timestamp
                     FROM persons
                     WHERE PersonID = :personId
                 """),
@@ -245,6 +246,15 @@ def update_person(
                     "placeOfDeath": person_data.get('PersonPlaceOfDeath')
                 }
             )
+            results = results_proxy.fetchall()
+            if results and len(results) > 0:
+                result_dict = results[0]._asdict() if hasattr(results[0], '_asdict') else dict(results[0])
+                completed_ok = result_dict.get('CompletedOk')
+                if completed_ok is not None and completed_ok != 0:
+                    logger.warning(f"ChangePerson returned CompletedOk: {completed_ok}")
+                    connection.rollback()
+                    return {"success": False, "error": "Wijziging mislukt - controleer database logs"}
+
             connection.commit()
             return {"success": True}
     except Exception as e:
@@ -260,6 +270,8 @@ def add_person(
         with engine.connect() as connection:
             full_name = f"{person_data.get('PersonGivvenName', '')} {person_data.get('PersonFamilyName', '')}".strip()
             logger.info(f"AddPerson called with: {full_name}")
+
+            is_male = person_data.get('PersonIsMale')
             
             # Call AddPerson procedure
             try:
@@ -286,7 +298,7 @@ def add_person(
                         "placeOfBirth": person_data.get('PersonPlaceOfBirth') or None,
                         "dateOfDeath": person_data.get('PersonDateOfDeath') or None,
                         "placeOfDeath": person_data.get('PersonPlaceOfDeath') or None,
-                        "isMale": person_data.get('PersonIsMale', 1),
+                        "isMale": is_male,
                         "motherId": person_data.get('MotherId') or None,
                         "fatherId": person_data.get('FatherId') or None,
                     }
@@ -297,9 +309,9 @@ def add_person(
                 if results and len(results) > 0:
                     result_dict = results[0]._asdict() if hasattr(results[0], '_asdict') else dict(results[0])
                     logger.info(f"First result keys: {list(result_dict.keys())}, values: {result_dict}")
-                    
-                    # Check if procedure succeeded (CompletedOk == 0)
-                    if result_dict.get('CompletedOk') != 0:
+
+                    # Only enforce CompletedOk when the procedure returns it explicitly.
+                    if 'CompletedOk' in result_dict and result_dict.get('CompletedOk') != 0:
                         logger.error(f"AddPerson procedure failed with CompletedOk={result_dict.get('CompletedOk')}")
                         connection.rollback()
                         return {"success": False, "error": "Database procedure mislukt"}
@@ -368,8 +380,16 @@ def delete_person(
             mother_id = person_data.get('MotherId') or None
             father_id = person_data.get('FatherId') or None
             partner_id = person_data.get('PartnerId') or None
+            timestamp = person_data.get('Timestamp')
             
-            logger.info(f"DeletePerson called for personId: {person_id}")
+            logger.info(f"DeletePerson called with data: {person_data}")
+            
+            if not timestamp:
+                logger.error(f"No Timestamp provided for DeletePerson with personId: {person_id}")
+                return {"success": False, "error": "Timestamp is vereist voor verwijdering"}
+            
+            logger.info(f"DeletePerson called for personId: {person_id}, timestamp: {timestamp}")
+            logger.info(f"MotherId: {mother_id}, FatherId: {father_id}, PartnerId: {partner_id}")
             
             results_proxy = connection.execute(
                 text("""call deletePerson(
@@ -384,7 +404,7 @@ def delete_person(
                     "motherId": mother_id,
                     "fatherId": father_id,
                     "partnerId": partner_id,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    "timestamp": timestamp
                 }
             )
             results = results_proxy.fetchall()
