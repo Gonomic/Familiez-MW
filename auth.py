@@ -159,12 +159,12 @@ def require_sso_auth(request: Request) -> Dict[str, Any]:
     return verify_sso_token(token)
 
 
-def exchange_authorization_code(code: str, code_verifier: str) -> str:
+def exchange_authorization_code(code: str, code_verifier: str = "") -> str:
     """Exchange OAuth authorization code for JWT token.
     
     Args:
         code: Authorization code from OAuth provider
-        code_verifier: PKCE code verifier
+        code_verifier: PKCE code verifier (optional, not used by Synology)
     
     Returns:
         JWT access token
@@ -172,6 +172,7 @@ def exchange_authorization_code(code: str, code_verifier: str) -> str:
     discovery = _get_discovery()
     token_endpoint = discovery.get("token_endpoint")
     if not token_endpoint:
+        logger.error("token_endpoint is missing from discovery document")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="token_endpoint is missing from discovery document",
@@ -179,6 +180,7 @@ def exchange_authorization_code(code: str, code_verifier: str) -> str:
     
     client_id = os.getenv("SYNOLOGY_CLIENT_ID", "")
     if not client_id:
+        logger.error("SYNOLOGY_CLIENT_ID is not configured")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="SYNOLOGY_CLIENT_ID is not configured",
@@ -187,16 +189,15 @@ def exchange_authorization_code(code: str, code_verifier: str) -> str:
     # Get redirect URI from environment (must match what's configured on Synology)
     redirect_uri = os.getenv("SYNOLOGY_REDIRECT_URI", "http://localhost:5173/auth/callback")
     
-    # Prepare token exchange request
+    # Prepare token exchange request (Synology doesn't support PKCE)
     token_request = {
         "grant_type": "authorization_code",
         "code": code,
         "client_id": client_id,
         "redirect_uri": redirect_uri,
-        "code_verifier": code_verifier,
     }
     
-    # Optional: Add client secret if configured (may be required by Synology)
+    # Add client secret if configured (required by Synology)
     client_secret = os.getenv("SYNOLOGY_CLIENT_SECRET", "").strip()
     if client_secret:
         token_request["client_secret"] = client_secret
@@ -204,21 +205,25 @@ def exchange_authorization_code(code: str, code_verifier: str) -> str:
     verify_ssl = _get_env_bool("SYNOLOGY_OIDC_VERIFY_SSL", "true")
     
     try:
-        response = requests.post(token_endpoint, json=token_request, timeout=10, verify=verify_ssl)
+        # OAuth 2.0 requires application/x-www-form-urlencoded, not JSON
+        response = requests.post(token_endpoint, data=token_request, timeout=10, verify=verify_ssl)
         response.raise_for_status()
         token_data = response.json()
         
-        if "access_token" not in token_data:
-            logger.error(f"Token response missing access_token: {token_data}")
+        if "id_token" not in token_data:
+            logger.error(f"Token response missing id_token (JWT)")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Failed to obtain access token from OAuth provider",
+                detail="Failed to obtain ID token from OAuth provider",
             )
         
-        return token_data["access_token"]
+        id_token = token_data["id_token"]
+        return id_token
     
     except requests.exceptions.RequestException as e:
-        logger.error(f"Token exchange failed: {e}")
+        logger.error(f"Token exchange request failed: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"Response status: {e.response.status_code}, body: {e.response.text}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token exchange failed",

@@ -28,6 +28,7 @@ PUBLIC_PATHS = {
     "/openapi.json",
     "/redoc",
     "/auth/callback",
+    "/auth/discovery",
 }
 
 # Initialize database engine once at startup
@@ -103,21 +104,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def create_cors_json_response(status_code: int, content: dict, origin: str = None) -> JSONResponse:
+    """Create a JSONResponse with CORS headers for error responses from middleware."""
+    response = JSONResponse(status_code=status_code, content=content)
+    # Add CORS headers - use provided origin or allow all ALLOWED_ORIGINS
+    if origin and origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    elif ALLOWED_ORIGINS:
+        # Use first allowed origin as fallback
+        response.headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGINS[0]
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 @app.middleware("http")
 async def require_sso_middleware(request: Request, call_next):
     if request.method == "OPTIONS" or request.url.path in PUBLIC_PATHS:
         return await call_next(request)
 
+    # Get origin from request for CORS
+    origin = request.headers.get("origin")
+    
     auth_header = request.headers.get("authorization", "")
     if not auth_header.lower().startswith("bearer "):
-        return JSONResponse(status_code=401, content={"detail": "Missing token"})
+        return create_cors_json_response(401, {"detail": "Missing token"}, origin)
 
     token = auth_header.split(" ", 1)[1].strip()
     try:
         request.state.user = verify_sso_token(token)
     except HTTPException as exc:
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        return create_cors_json_response(exc.status_code, {"detail": exc.detail}, origin)
 
     return await call_next(request)
 
@@ -125,24 +143,49 @@ async def require_sso_middleware(request: Request, call_next):
 def read_root() -> Dict[str, str]:
     return {"message": "Familiez API", "status": "OK"}
 
+@app.get("/auth/discovery")
+def get_oidc_discovery() -> Dict[str, Any]:
+    """Proxy OIDC discovery document to avoid CORS issues in frontend."""
+    import requests
+    
+    discovery_url = os.getenv(
+        "SYNOLOGY_OIDC_DISCOVERY_URL",
+        "https://sso.dekknet.com/webman/sso/.well-known/openid-configuration"
+    )
+    verify_ssl = os.getenv("SYNOLOGY_OIDC_VERIFY_SSL", "true").strip().lower() in {"1", "true", "yes", "on"}
+    
+    try:
+        response = requests.get(discovery_url, timeout=10, verify=verify_ssl)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch OIDC discovery: {e}")
+        raise HTTPException(status_code=502, detail="Failed to fetch OIDC configuration")
+
 @app.post("/auth/callback")
 def oauth_callback(request_data: Dict[str, str]) -> Dict[str, str]:
     """Exchange OAuth authorization code for JWT token.
     
     Expected request body:
     {
-        "code": "authorization_code_from_oauth",
-        "codeVerifier": "pkce_code_verifier"
+        "code": "authorization_code_from_oauth"
     }
+    Note: codeVerifier is not needed as Synology doesn't support PKCE
     """
     code = request_data.get("code", "").strip()
-    code_verifier = request_data.get("codeVerifier", "").strip()
     
-    if not code or not code_verifier:
-        raise HTTPException(status_code=400, detail="Missing code or codeVerifier")
+    if not code:
+        logger.error("OAuth callback missing authorization code")
+        raise HTTPException(status_code=400, detail="Missing code")
     
-    access_token = exchange_authorization_code(code, code_verifier)
-    return {"access_token": access_token}
+    try:
+        access_token = exchange_authorization_code(code)
+        return {"access_token": access_token}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during token exchange: {e}")
+        raise HTTPException(status_code=500, detail="Token exchange failed")
 
 @app.get("/pingAPI")
 def ping_api(timestampFE: datetime) -> List[Dict[str, str]]:
@@ -431,7 +474,6 @@ def add_person(
     try:
         with engine.connect() as connection:
             full_name = f"{person_data.get('PersonGivvenName', '')} {person_data.get('PersonFamilyName', '')}".strip()
-            logger.info(f"AddPerson called with: {full_name}")
 
             is_male = person_data.get('PersonIsMale')
             
@@ -467,11 +509,9 @@ def add_person(
                     }
                 )
                 results = results_proxy.fetchall()
-                logger.info(f"AddPerson procedure completed, results count: {len(results) if results else 0}")
                 
                 if results and len(results) > 0:
                     result_dict = results[0]._asdict() if hasattr(results[0], '_asdict') else dict(results[0])
-                    logger.info(f"First result keys: {list(result_dict.keys())}, values: {result_dict}")
 
                     # Only enforce CompletedOk when the procedure returns it explicitly.
                     if 'CompletedOk' in result_dict and result_dict.get('CompletedOk') != 0:
@@ -492,8 +532,6 @@ def add_person(
                 return {"success": False, "error": f"Database fout: {error_msg[:50]}"}
             
             # Now fetch the inserted person by name and other details
-            logger.info(f"Fetching inserted person: {person_data.get('PersonGivvenName')} {person_data.get('PersonFamilyName')}")
-            
             select_results = connection.execute(
                 text("""
                     SELECT PersonID, PersonGivvenName, PersonFamilyName, PersonDateOfBirth, 
@@ -511,7 +549,6 @@ def add_person(
             
             if select_results and len(select_results) > 0:
                 person_dict = select_results[0]._asdict() if hasattr(select_results[0], '_asdict') else dict(select_results[0])
-                logger.info(f"Found inserted person with ID: {person_dict.get('PersonID')}")
                 return {
                     "success": True, 
                     "personId": person_dict.get('PersonID')
@@ -545,7 +582,9 @@ def delete_person(
             partner_id = person_data.get('PartnerId') or None
             timestamp = person_data.get('Timestamp')
             
-            logger.info(f"DeletePerson called with data: {person_data}")
+            mother_id = person_data.get('MotherId')
+            father_id = person_data.get('FatherId')
+            partner_id = person_data.get('PartnerId')
             
             if not timestamp:
                 logger.error(f"No Timestamp provided for DeletePerson with personId: {person_id}")
