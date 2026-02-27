@@ -132,12 +132,14 @@ async def require_sso_middleware(request: Request, call_next):
     
     auth_header = request.headers.get("authorization", "")
     if not auth_header.lower().startswith("bearer "):
-        return create_cors_json_response(401, {"detail": "Missing token"}, origin)
+        logger.warning(f"[Auth] Missing or invalid auth header for {request.url.path}. Header: {auth_header[:50] if auth_header else 'NONE'}")
+        return create_cors_json_response(401, {"detail": "Missing or invalid token"}, origin)
 
     token = auth_header.split(" ", 1)[1].strip()
     try:
         request.state.user = verify_sso_token(token)
     except HTTPException as exc:
+        logger.warning(f"[Auth] Token validation failed for {request.url.path}: {exc.detail}")
         return create_cors_json_response(exc.status_code, {"detail": exc.detail}, origin)
 
     return await call_next(request)
