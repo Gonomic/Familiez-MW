@@ -29,6 +29,9 @@ PUBLIC_PATHS = {
     "/redoc",
     "/auth/callback",
     "/auth/discovery",
+    "/GetReleases",
+    "/pingAPI",
+    "/pingDB",
 }
 
 # Initialize database engine once at startup
