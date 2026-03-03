@@ -1,7 +1,7 @@
 import os
 import time
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import jwt
 import requests
@@ -25,6 +25,11 @@ def _get_env_bool(name: str, default: str = "true") -> bool:
 
 def _get_env_int(name: str, default: str) -> int:
     return int(os.getenv(name, default).strip())
+
+
+def _get_env_csv(name: str, default: str) -> List[str]:
+    value = os.getenv(name, default)
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def _get_discovery_url() -> str:
@@ -158,15 +163,42 @@ def _extract_bearer_token(request: Request) -> str:
     return auth_header.split(" ", 1)[1].strip()
 
 
+def _normalize_username(username: str) -> str:
+    normalized = str(username or "").strip()
+    strip_domain = _get_env_bool("SYNOLOGY_STRIP_USERNAME_DOMAIN", "true")
+    if strip_domain and "@" in normalized:
+        normalized = normalized.split("@", 1)[0]
+    return normalized
+
+
 def _extract_username_from_claims(claims: Dict[str, Any]) -> str:
     username = (
         claims.get("preferred_username")
         or claims.get("username")
         or claims.get("user_name")
+        or claims.get("upn")
+        or claims.get("email")
         or claims.get("sub")
         or ""
     )
-    return str(username).strip()
+    return _normalize_username(str(username))
+
+
+def _member_value_matches(value: Any, member_dn: str, username: str) -> bool:
+    value_text = str(value or "").strip().lower()
+    if not value_text:
+        return False
+
+    member_dn_lower = member_dn.lower()
+    username_lower = username.lower()
+
+    if value_text == member_dn_lower or value_text == username_lower:
+        return True
+
+    if f"uid={username_lower}," in value_text or f"cn={username_lower}," in value_text:
+        return True
+
+    return False
 
 
 def _run_ldap_group_check(member_dn: str, group_dn: str) -> bool:
@@ -180,6 +212,11 @@ def _run_ldap_group_check(member_dn: str, group_dn: str) -> bool:
         return False
 
     timeout_seconds = _get_env_int("SYNOLOGY_LDAP_TIMEOUT", "8")
+    member_attributes = _get_env_csv(
+        "SYNOLOGY_LDAP_GROUP_MEMBER_ATTRIBUTES",
+        "member,uniqueMember,memberUid",
+    )
+    username = _normalize_username(member_dn.split(",", 1)[0].split("=", 1)[-1])
     
     # ldap3 doesn't validate SSL by default for self-signed certs
     # Create server with get_info=ALL for better debugging
@@ -193,28 +230,36 @@ def _run_ldap_group_check(member_dn: str, group_dn: str) -> bool:
             receive_timeout=timeout_seconds
         )
         
-        # Search for the member within the group object itself
-        search_filter = f"(member={member_dn})"
+        # Read group entry and inspect common member attributes used by Synology/LDAP variants
         conn.search(
             search_base=group_dn,
-            search_filter=search_filter,
+            search_filter="(objectClass=*)",
             search_scope=BASE,
-            attributes=["member"],
+            attributes=member_attributes,
         )
-        
-        # If we got results, the member is in the group
-        is_member = len(conn.entries) > 0
+
+        is_member = False
+        if conn.entries:
+            attribute_map = conn.entries[0].entry_attributes_as_dict
+            for attribute_name in member_attributes:
+                for member_value in attribute_map.get(attribute_name, []) or []:
+                    if _member_value_matches(member_value, member_dn, username):
+                        is_member = True
+                        break
+                if is_member:
+                    break
+
         conn.unbind()
-        
+
         return is_member
-        
+
     except Exception as exc:
         logger.warning("LDAP query failed for group %s: %s", group_dn, exc)
         return False
 
 
 def get_user_ldap_role(username: str) -> Dict[str, Any]:
-    username_value = (username or "").strip()
+    username_value = _normalize_username(username)
     if not username_value:
         return {
             "username": "",
@@ -259,9 +304,68 @@ def get_user_ldap_role(username: str) -> Dict[str, Any]:
     }
 
 
+def _extract_groups_from_claims(claims: Dict[str, Any]) -> List[str]:
+    possible_group_values = []
+    for key in ("groups", "group", "roles", "role"):
+        raw_value = claims.get(key)
+        if isinstance(raw_value, list):
+            possible_group_values.extend(raw_value)
+        elif isinstance(raw_value, str):
+            possible_group_values.append(raw_value)
+
+    normalized_groups: List[str] = []
+    for group_value in possible_group_values:
+        text = str(group_value or "").strip()
+        if not text:
+            continue
+        if "," in text:
+            normalized_groups.extend([part.strip() for part in text.split(",") if part.strip()])
+        else:
+            normalized_groups.append(text)
+
+    return normalized_groups
+
+
+def _group_matches(group_value: str, expected_name: str) -> bool:
+    group_text = str(group_value or "").strip().lower()
+    expected_text = str(expected_name or "").strip().lower()
+    if not group_text or not expected_text:
+        return False
+    return group_text == expected_text or group_text.endswith(f"={expected_text}")
+
+
+def _merge_claim_groups(access: Dict[str, Any], claims: Dict[str, Any]) -> Dict[str, Any]:
+    admin_group_name = os.getenv("SYNOLOGY_LDAP_GROUP_ADMIN_NAME", "Familiez_Admin").strip()
+    user_group_name = os.getenv("SYNOLOGY_LDAP_GROUP_USER_NAME", "Familiez_Users").strip()
+
+    claim_groups = _extract_groups_from_claims(claims)
+    is_admin_from_claims = any(_group_matches(group, admin_group_name) for group in claim_groups)
+    is_user_from_claims = any(_group_matches(group, user_group_name) for group in claim_groups)
+
+    is_admin = bool(access.get("is_admin") or is_admin_from_claims)
+    is_user = bool(access.get("is_user") or is_user_from_claims or is_admin)
+
+    combined_groups = list(access.get("groups") or [])
+    if is_admin and admin_group_name not in combined_groups:
+        combined_groups.append(admin_group_name)
+    if is_user and user_group_name not in combined_groups:
+        combined_groups.append(user_group_name)
+
+    role = ROLE_ADMIN if is_admin else ROLE_USER if is_user else ROLE_NONE
+
+    return {
+        **access,
+        "role": role,
+        "is_admin": is_admin,
+        "is_user": is_user,
+        "groups": combined_groups,
+    }
+
+
 def resolve_ldap_role_from_claims(claims: Dict[str, Any]) -> Dict[str, Any]:
     username = _extract_username_from_claims(claims)
-    return get_user_ldap_role(username)
+    access = get_user_ldap_role(username)
+    return _merge_claim_groups(access, claims)
 
 
 def require_sso_auth(request: Request) -> Dict[str, Any]:
