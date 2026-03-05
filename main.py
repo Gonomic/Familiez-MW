@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, text
 from PIL import Image
 import io
 import json
+import mimetypes
 from pathlib import Path
 
 from auth import verify_sso_token, exchange_authorization_code, resolve_ldap_role_from_claims, require_admin_role
@@ -151,11 +152,18 @@ async def require_sso_middleware(request: Request, call_next):
     origin = request.headers.get("origin")
     
     auth_header = request.headers.get("authorization", "")
-    if not auth_header.lower().startswith("bearer "):
+    token = ""
+
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    elif request.method == "GET" and request.url.path.startswith("/api/files/"):
+        # Browser-based preview/image requests (window.open/img src) cannot attach custom auth headers.
+        token = (request.query_params.get("token") or "").strip()
+
+    if not token:
         logger.warning(f"[Auth] Missing or invalid auth header for {request.url.path}. Header: {auth_header[:50] if auth_header else 'NONE'}")
         return create_cors_json_response(401, {"detail": "Missing or invalid token"}, origin)
 
-    token = auth_header.split(" ", 1)[1].strip()
     try:
         claims = verify_sso_token(token)
         request.state.user = claims
@@ -723,7 +731,10 @@ async def upload_file(
         Dict with file_id and success status
     """
     try:
-        logger.info(f"File upload: scope={scope}, entity={entity_id}, type={document_type}, filename={file.filename}")
+        original_filename = file.filename or "unknown"
+        logger.info(f"File upload: scope={scope}, entity={entity_id}, type={document_type}")
+        logger.info(f"  Original filename: '{original_filename}'")
+        logger.info(f"  Content-Type: '{file.content_type}'")
         
         # Read file contents
         contents = await file.read()
@@ -740,8 +751,8 @@ async def upload_file(
         names_data = json.loads(person_data) if person_data else {}
         
         # Determine file extension
-        original_filename = file.filename or "unknown"
         file_ext = Path(original_filename).suffix.lstrip('.') or 'bin'
+        logger.info(f"  Detected extension: '{file_ext}'")
         
         # Get MIME type
         mime_type = file.content_type or 'application/octet-stream'
@@ -879,6 +890,12 @@ async def download_file(request: Request, file_id: int) -> FileResponse:
             filename = result.FileName
             original_filename = result.OriginalFileName or filename
             mime_type = result.MimeType or 'application/octet-stream'
+
+            # Fallback for older uploads where browser sent no reliable MIME type.
+            if mime_type == 'application/octet-stream':
+                guessed_mime, _ = mimetypes.guess_type(original_filename)
+                if guessed_mime:
+                    mime_type = guessed_mime
         
         # Build full path
         full_path = Path(STORAGE_BASE_PATH) / file_path_rel
@@ -887,11 +904,12 @@ async def download_file(request: Request, file_id: int) -> FileResponse:
             logger.error(f"File not found on disk: {full_path}")
             raise HTTPException(status_code=404, detail="File not found on disk")
         
-        # Return file
+        # Force inline rendering in browser preview window instead of download behavior.
+        safe_filename = str(original_filename).replace('"', '')
         return FileResponse(
             path=str(full_path),
-            filename=original_filename,
-            media_type=mime_type
+            media_type=mime_type,
+            headers={"Content-Disposition": f'inline; filename="{safe_filename}"'}
         )
         
     except HTTPException:
