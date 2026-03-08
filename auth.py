@@ -1,7 +1,7 @@
 import os
 import time
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import jwt
 import requests
@@ -380,15 +380,16 @@ def require_sso_auth(request: Request) -> Dict[str, Any]:
     return verify_sso_token(token)
 
 
-def exchange_authorization_code(code: str, code_verifier: str = "") -> str:
-    """Exchange OAuth authorization code for JWT token.
+def exchange_authorization_code(code: str, code_verifier: str = "") -> Tuple[str, Dict[str, Any]]:
+    """Exchange OAuth authorization code for JWT token and extract user info.
     
     Args:
         code: Authorization code from OAuth provider
         code_verifier: PKCE code verifier (optional, not used by Synology)
     
     Returns:
-        JWT access token
+        Tuple of (id_token, user_info_dict) where user_info_dict contains
+        username, role, groups, is_admin, is_user
     """
     discovery = _get_discovery()
     token_endpoint = discovery.get("token_endpoint")
@@ -431,6 +432,30 @@ def exchange_authorization_code(code: str, code_verifier: str = "") -> str:
         response.raise_for_status()
         token_data = response.json()
         
+        # Force output to stdout/logs with print (bypasses logger config)
+        print(f"=== TOKEN EXCHANGE DEBUG ===")
+        print(f"Keys: {list(token_data.keys())}")
+        
+        # Log what Synology returns to check for refresh_token support
+        logger.info(f"Token response contains keys: {list(token_data.keys())}")
+        if "expires_in" in token_data:
+            logger.info(f"Token expires in: {token_data['expires_in']} seconds ({token_data['expires_in'] / 3600:.1f} hours)")
+            print(f"expires_in: {token_data['expires_in']} seconds")
+        if "refresh_token" in token_data:
+            logger.info("Refresh token available in response (currently not used)")
+        
+        # Compare access_token vs id_token expiry claims - use print to bypass logger
+        if "access_token" in token_data:
+            print(f"Decoding access_token...")
+            try:
+                access_decoded = jwt.decode(token_data["access_token"], options={"verify_signature": False})
+                access_exp = access_decoded.get("exp", 0)
+                print(f"access_token exp: {access_exp}")
+                logger.warning(f"access_token exp claim: {access_exp} (epoch)")
+            except Exception as e:
+                print(f"ERROR decoding access_token: {type(e).__name__}: {e}")
+                logger.warning(f"Could not decode access_token: {type(e).__name__}: {e}")
+        
         if "id_token" not in token_data:
             logger.error(f"Token response missing id_token (JWT)")
             raise HTTPException(
@@ -438,8 +463,21 @@ def exchange_authorization_code(code: str, code_verifier: str = "") -> str:
                 detail="Failed to obtain ID token from OAuth provider",
             )
         
+        # Decode id_token to compare expiry
         id_token = token_data["id_token"]
-        return id_token
+        try:
+            id_decoded = jwt.decode(id_token, options={"verify_signature": False})
+            id_exp = id_decoded.get("exp", 0)
+            logger.warning(f"id_token exp claim: {id_exp} (epoch)")
+        except Exception as e:
+            logger.warning(f"Could not decode id_token: {e}")
+        
+        # Extract user info and resolve LDAP role
+        user_access = resolve_ldap_role_from_claims(id_decoded)
+        
+        logger.info(f"Token exchange successful for user: {user_access.get('username')} (role: {user_access.get('role')})")
+        
+        return id_token, user_access
     
     except requests.exceptions.RequestException as e:
         logger.error(f"Token exchange request failed: {e}")

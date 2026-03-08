@@ -2,6 +2,10 @@ import os
 import logging
 from datetime import datetime, date
 from typing import List, Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from fastapi import FastAPI, Query, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +18,7 @@ import mimetypes
 from pathlib import Path
 
 from auth import verify_sso_token, exchange_authorization_code, resolve_ldap_role_from_claims, require_admin_role
+from session_manager import create_session, validate_session, destroy_session, renew_session, get_session_info
 from file_utils import (
     slugify,
     generate_filename,
@@ -24,6 +29,17 @@ from file_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+VALID_ENVIRONMENTS = {"development", "dev", "test", "staging", "prod", "production"}
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+if ENVIRONMENT not in VALID_ENVIRONMENTS:
+    logger.warning(
+        "Unknown ENVIRONMENT='%s'. Expected one of %s. Defaulting to non-production behavior.",
+        ENVIRONMENT,
+        sorted(VALID_ENVIRONMENTS),
+    )
+elif ENVIRONMENT in {"development", "dev"}:
+    logger.info("Running in development mode (ENVIRONMENT=%s)", ENVIRONMENT)
 
 # Configuration from environment variables
 DATABASE_URL = os.getenv(
@@ -50,6 +66,8 @@ PUBLIC_PATHS = {
     "/redoc",
     "/auth/callback",
     "/auth/discovery",
+    "/auth/logout",      # NEW: Allow logout without token
+    "/auth/keepalive",   # NEW: Allow session keepalive without token (uses session cookie)
     "/GetReleases",
     "/pingAPI",
     "/pingDB",
@@ -150,6 +168,8 @@ async def require_sso_middleware(request: Request, call_next):
 
     # Get origin from request for CORS
     origin = request.headers.get("origin")
+    session_id = (request.cookies.get("familiez_session") or "").strip()
+    session_user = validate_session(session_id) if session_id else None
     
     auth_header = request.headers.get("authorization", "")
     token = ""
@@ -161,7 +181,12 @@ async def require_sso_middleware(request: Request, call_next):
         token = (request.query_params.get("token") or "").strip()
 
     if not token:
-        logger.warning(f"[Auth] Missing or invalid auth header for {request.url.path}. Header: {auth_header[:50] if auth_header else 'NONE'}")
+        if session_user:
+            request.state.user = {}
+            request.state.user_access = session_user
+            return await call_next(request)
+
+        logger.warning(f"[Auth] Missing auth token and no valid session for {request.url.path}. Header: {auth_header[:50] if auth_header else 'NONE'}")
         return create_cors_json_response(401, {"detail": "Missing or invalid token"}, origin)
 
     try:
@@ -169,6 +194,12 @@ async def require_sso_middleware(request: Request, call_next):
         request.state.user = claims
         request.state.user_access = resolve_ldap_role_from_claims(claims)
     except HTTPException as exc:
+        if session_user:
+            request.state.user = {}
+            request.state.user_access = session_user
+            logger.info(f"[Auth] JWT invalid ({exc.detail}) for {request.url.path}; falling back to server session")
+            return await call_next(request)
+
         logger.warning(f"[Auth] Token validation failed for {request.url.path}: {exc.detail}")
         return create_cors_json_response(exc.status_code, {"detail": exc.detail}, origin)
 
@@ -206,6 +237,10 @@ def oauth_callback(request_data: Dict[str, str]) -> Dict[str, str]:
         "code": "authorization_code_from_oauth"
     }
     Note: codeVerifier is not needed as Synology doesn't support PKCE
+    
+    Returns:
+    - access_token: JWT token (still needed for subsequent API calls)
+    - Sets session cookie if USE_SERVER_SESSIONS=true
     """
     code = request_data.get("code", "").strip()
     
@@ -214,8 +249,16 @@ def oauth_callback(request_data: Dict[str, str]) -> Dict[str, str]:
         raise HTTPException(status_code=400, detail="Missing code")
     
     try:
-        access_token = exchange_authorization_code(code)
-        return {"access_token": access_token}
+        access_token, user_access = exchange_authorization_code(code)
+        response = JSONResponse({"access_token": access_token})
+        
+        # Create server-side session if enabled
+        session_id, cookie_config = create_session(user_access)
+        if session_id:
+            logger.info(f"Setting session cookie for user {user_access.get('username')}")
+            response.set_cookie(**cookie_config)
+        
+        return response
     except HTTPException:
         raise
     except Exception as e:
@@ -234,6 +277,46 @@ def get_authenticated_user(request: Request) -> Dict[str, Any]:
         "is_admin": bool(access.get("is_admin", False)),
         "is_user": bool(access.get("is_user", False)),
     }
+
+@app.post("/auth/keepalive")
+def session_keepalive(request: Request) -> Dict[str, Any]:
+    """Heartbeat endpoint to keep session alive.
+    
+    Called periodically by client to extend session expiry.
+    Requires valid session cookie (if USE_SERVER_SESSIONS=true).
+    """
+    session_id = request.cookies.get("familiez_session", "")
+    
+    if session_id and renew_session(session_id):
+        return {"status": "renewed"}
+    
+    return {"status": "no_session"}
+
+@app.post("/auth/logout")
+def logout(request: Request) -> Dict[str, str]:
+    """Logout endpoint to destroy the session.
+    
+    Clears both the session cookie and invalidates the JWT token.
+    """
+    session_id = request.cookies.get("familiez_session", "")
+    
+    if session_id:
+        destroy_session(session_id)
+        logger.info(f"User logged out")
+    
+    response = JSONResponse({"status": "logged_out"})
+    response.delete_cookie("familiez_session")
+    
+    return response
+
+@app.get("/auth/session-info")
+def get_session_info_debug(request: Request) -> Dict[str, Any]:
+    """Debug endpoint: session statistics for authenticated admins only (non-production)."""
+    if ENVIRONMENT in {"prod", "production"}:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    require_admin_role(request)
+    return get_session_info()
 
 @app.get("/pingAPI")
 def ping_api(timestampFE: datetime) -> List[Dict[str, str]]:
