@@ -150,6 +150,22 @@ def verify_sso_token(token: str) -> Dict[str, Any]:
         )
         return payload
     except jwt.ExpiredSignatureError:
+        # Fallback: check server-side session
+        from session_manager import validate_session
+        import fastapi
+        session_id = None
+        if hasattr(fastapi, 'Request'):
+            # Probeer session cookie te pakken uit FastAPI request
+            try:
+                request = fastapi.Request
+                session_id = request.cookies.get("familiez_session")
+            except Exception:
+                session_id = None
+        if session_id:
+            user_info = validate_session(session_id)
+            if user_info:
+                logger.info("Token expired, maar geldige server-side sessie.")
+                return user_info
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except jwt.PyJWTError as exc:
         logger.warning("Token validation failed: %s", exc)
