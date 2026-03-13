@@ -466,7 +466,8 @@ def get_partners(
 ) -> List[Dict[str, Any]]:
     try:
         with engine.connect() as connection:
-            # Query partners from relations table
+            # A partner relation can be stored in either direction.
+            # Return at most one partner because domain rules allow 0 or 1 partner.
             results_proxy = connection.execute(
                 text("""
                     SELECT DISTINCT
@@ -475,11 +476,16 @@ def get_partners(
                         p.PersonFamilyName,
                         p.PersonDateOfBirth,
                         p.PersonDateOfDeath
-                    FROM relations r1
-                    JOIN relationnames rn ON r1.RelationName = rn.RelationnameID
-                    JOIN persons p ON r1.RelationWithPerson = p.PersonID
-                    WHERE r1.RelationPerson = :personId
+                    FROM relations r
+                    JOIN relationnames rn ON r.RelationName = rn.RelationnameID
+                    JOIN persons p ON p.PersonID = CASE
+                        WHEN r.RelationPerson = :personId THEN r.RelationWithPerson
+                        ELSE r.RelationPerson
+                    END
+                    WHERE (r.RelationPerson = :personId OR r.RelationWithPerson = :personId)
                     AND rn.RelationnameName IN ('Partner', 'Echtgenoot', 'Echtgenote')
+                    ORDER BY p.PersonID
+                    LIMIT 1
                 """),
                 {"personId": personID}
             )
