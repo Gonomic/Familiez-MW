@@ -804,6 +804,8 @@ async def upload_file(
     Returns:
         Dict with file_id and success status
     """
+    written_file_path = None
+
     try:
         original_filename = file.filename or "unknown"
         logger.info(f"File upload: scope={scope}, entity={entity_id}, type={document_type}")
@@ -875,6 +877,7 @@ async def upload_file(
         # Write file to disk
         with open(file_path, 'wb') as f:
             f.write(contents)
+        written_file_path = file_path
         
         logger.info(f"File written to disk: {file_path}")
         
@@ -882,41 +885,67 @@ async def upload_file(
         user_claims = getattr(request.state, 'user', {})
         uploaded_by = user_claims.get('preferred_username') or user_claims.get('sub', 'unknown')
         
-        # Insert metadata into database
+        # Insert metadata into database via sprocs
         with engine.connect() as conn:
-            # Insert into files table
-            result = conn.execute(
-                text("""
-                    INSERT INTO files 
-                    (FilePath, FileName, OriginalFileName, DocumentType, Year, FileSize, MimeType, UploadedBy)
-                    VALUES (:path, :filename, :original, :doctype, :year, :size, :mime, :uploaded_by)
-                """),
-                {
-                    'path': relative_path,
-                    'filename': filename,
-                    'original': original_filename,
-                    'doctype': document_type,
-                    'year': year if year else None,
-                    'size': file_size,
-                    'mime': mime_type,
-                    'uploaded_by': uploaded_by
-                }
-            )
-            file_id = result.lastrowid
-            
-            # Create appropriate link
+            sproc_params = {
+                'path': relative_path,
+                'filename': filename,
+                'original': original_filename,
+                'doctype': document_type,
+                'year': year if year else None,
+                'size': file_size,
+                'mime': mime_type,
+                'uploaded_by': uploaded_by
+            }
+
             if scope == "person":
-                conn.execute(
-                    text("INSERT INTO person_files (PersonID, FileID) VALUES (:person_id, :file_id)"),
-                    {'person_id': person_id, 'file_id': file_id}
-                )
+                sproc_result = conn.execute(
+                    text("""
+                        call AddFileForPerson(
+                            :path,
+                            :filename,
+                            :original,
+                            :doctype,
+                            :year,
+                            :size,
+                            :mime,
+                            :uploaded_by,
+                            :person_id
+                        )
+                    """),
+                    {**sproc_params, 'person_id': person_id}
+                ).fetchone()
             else:  # family
-                conn.execute(
-                    text("INSERT INTO family_files (FatherID, MotherID, FileID) VALUES (:father_id, :mother_id, :file_id)"),
-                    {'father_id': father_id, 'mother_id': mother_id, 'file_id': file_id}
+                sproc_result = conn.execute(
+                    text("""
+                        call AddFileForFamily(
+                            :path,
+                            :filename,
+                            :original,
+                            :doctype,
+                            :year,
+                            :size,
+                            :mime,
+                            :uploaded_by,
+                            :father_id,
+                            :mother_id
+                        )
+                    """),
+                    {**sproc_params, 'father_id': father_id, 'mother_id': mother_id}
+                ).fetchone()
+
+            if not sproc_result:
+                raise RuntimeError("No result returned from file upload stored procedure")
+
+            result_dict = sproc_result._asdict() if hasattr(sproc_result, '_asdict') else dict(sproc_result)
+            completed_ok = result_dict.get('CompletedOk')
+            result_code = result_dict.get('Result')
+            file_id = result_dict.get('FileID')
+
+            if completed_ok != 0 or file_id is None:
+                raise RuntimeError(
+                    f"Stored procedure failed (CompletedOk={completed_ok}, Result={result_code}, FileID={file_id})"
                 )
-            
-            conn.commit()
         
         logger.info(f"File metadata saved to database: file_id={file_id}")
         
@@ -932,8 +961,20 @@ async def upload_file(
         }
         
     except HTTPException:
+        if written_file_path and written_file_path.exists():
+            try:
+                written_file_path.unlink()
+                logger.warning(f"Removed uploaded file after failed DB operation: {written_file_path}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to cleanup file after HTTP error: {cleanup_error}")
         raise
     except Exception as e:
+        if written_file_path and written_file_path.exists():
+            try:
+                written_file_path.unlink()
+                logger.warning(f"Removed uploaded file after failed DB operation: {written_file_path}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to cleanup file after upload failure: {cleanup_error}")
         logger.error(f"Error uploading file: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 

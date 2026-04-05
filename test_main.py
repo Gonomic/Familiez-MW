@@ -1,7 +1,9 @@
 import pytest
+import tempfile
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 from fastapi.testclient import TestClient
+from pathlib import Path
 
 from main import app, format_result, fetch_releases
 
@@ -550,3 +552,75 @@ class TestFileReadEndpoints:
         assert 'GetFamilyFiles' in str(call_args[0][0])
         assert call_args[0][1]['father_id'] == 2
         assert call_args[0][1]['mother_id'] == 3
+
+
+class TestUploadFileEndpoint:
+    """Test suite for upload endpoint migrated to write sprocs."""
+
+    @patch('main.verify_sso_token')
+    @patch('main.engine')
+    def test_upload_person_file_calls_addfileforperson_sproc(self, mock_engine, mock_verify_sso_token):
+        """Upload should use AddFileForPerson and return file_id from sproc result."""
+        mock_verify_sso_token.return_value = {'sub': 'test-user', 'preferred_username': 'tester'}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        sproc_row = Mock()
+        sproc_row._asdict.return_value = {'CompletedOk': 0, 'Result': 2, 'FileID': 88}
+        mock_connection.execute.return_value.fetchone.return_value = sproc_row
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch('main.STORAGE_BASE_PATH', tmp_dir):
+                response = client.post(
+                    '/api/files/upload',
+                    headers={'Authorization': 'Bearer valid-test-token'},
+                    data={
+                        'scope': 'person',
+                        'entity_id': '123',
+                        'document_type': 'overig',
+                        'year': '2026',
+                        'person_data': '{"first_name":"Jan","last_name":"Jansen"}',
+                    },
+                    files={'file': ('document.txt', b'hello world', 'text/plain')},
+                )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload['success'] is True
+        assert payload['file_id'] == 88
+
+        call_args = mock_connection.execute.call_args
+        assert 'AddFileForPerson' in str(call_args[0][0])
+        assert call_args[0][1]['person_id'] == 123
+
+    @patch('main.verify_sso_token')
+    @patch('main.engine')
+    def test_upload_cleanup_when_sproc_fails(self, mock_engine, mock_verify_sso_token):
+        """Uploaded file should be removed from disk if DB sproc reports failure."""
+        mock_verify_sso_token.return_value = {'sub': 'test-user', 'preferred_username': 'tester'}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        sproc_row = Mock()
+        sproc_row._asdict.return_value = {'CompletedOk': 2, 'Result': -1, 'FileID': None}
+        mock_connection.execute.return_value.fetchone.return_value = sproc_row
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch('main.STORAGE_BASE_PATH', tmp_dir):
+                response = client.post(
+                    '/api/files/upload',
+                    headers={'Authorization': 'Bearer valid-test-token'},
+                    data={
+                        'scope': 'person',
+                        'entity_id': '123',
+                        'document_type': 'overig',
+                        'person_data': '{"first_name":"Jan","last_name":"Jansen"}',
+                    },
+                    files={'file': ('document.txt', b'hello world', 'text/plain')},
+                )
+
+                files_on_disk = [p for p in Path(tmp_dir).rglob('*') if p.is_file()]
+
+        assert response.status_code == 500
+        assert 'Upload failed' in response.json()['detail']
+        assert files_on_disk == []
