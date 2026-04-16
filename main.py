@@ -2,6 +2,7 @@ import os
 import logging
 from datetime import datetime, date
 from typing import List, Dict, Any
+from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -42,9 +43,15 @@ elif ENVIRONMENT in {"development", "dev"}:
     logger.info("Running in development mode (ENVIRONMENT=%s)", ENVIRONMENT)
 
 # Configuration from environment variables
+db_user = os.getenv("DB_USER", "HumansService")
+db_password = os.getenv("DB_PASSWORD", "")
+db_host = os.getenv("DB_HOST", "localhost")
+db_port = os.getenv("DB_PORT", "3306")
+db_name = os.getenv("DB_NAME", "humans")
+
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "mysql+pymysql://HumansService:XHHxECL54EjvhhPSBLMU@localhost:3306/humans"
+    f"mysql+pymysql://{db_user}:{quote_plus(db_password)}@{db_host}:{db_port}/{db_name}"
 )
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
@@ -87,6 +94,77 @@ def format_result(results: List[Any]) -> List[Dict[str, Any]]:
     result_dicts = [row._asdict() for row in results]
     return [{"numberOfRecords": len(result_dicts)}, *result_dicts]
 
+
+MARRIAGE_END_REASONS = {
+    "scheiding",
+    "overlijden_een_partner",
+    "overlijden_beide_partners",
+    "onbekend",
+}
+
+
+def _parse_required_int(value: Any, field_name: str) -> int:
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        raise HTTPException(status_code=400, detail=f"{field_name} is verplicht")
+    try:
+        parsed_value = int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{field_name} moet een geldig getal zijn")
+
+    if parsed_value <= 0:
+        raise HTTPException(status_code=400, detail=f"{field_name} moet groter zijn dan 0")
+
+    return parsed_value
+
+
+def _parse_required_date(value: Any, field_name: str) -> date:
+    if value is None:
+        raise HTTPException(status_code=400, detail=f"{field_name} is verplicht")
+
+    if isinstance(value, date):
+        return value
+
+    if not isinstance(value, str) or value.strip() == "":
+        raise HTTPException(status_code=400, detail=f"{field_name} moet formaat YYYY-MM-DD hebben")
+
+    try:
+        return datetime.strptime(value.strip(), "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"{field_name} moet formaat YYYY-MM-DD hebben")
+
+
+def _parse_end_reason(value: Any) -> str:
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        raise HTTPException(status_code=400, detail="endReason is verplicht")
+
+    normalized = str(value).strip().lower()
+    if normalized not in MARRIAGE_END_REASONS:
+        raise HTTPException(
+            status_code=400,
+            detail="endReason moet een van deze waarden zijn: scheiding, overlijden_een_partner, overlijden_beide_partners, onbekend",
+        )
+
+    return normalized
+
+
+def _extract_proc_result(results: List[Any], operation_name: str) -> Dict[str, Any]:
+    if not results:
+        raise HTTPException(status_code=500, detail=f"{operation_name} gaf geen resultaat terug")
+
+    first_row = results[0]
+    return first_row._asdict() if hasattr(first_row, "_asdict") else dict(first_row)
+
+
+def _map_marriage_result_to_http(result_code: Any) -> int:
+    try:
+        code = int(result_code)
+    except (TypeError, ValueError):
+        return 500
+
+    if code in {400, 404, 409, 422}:
+        return code
+    return 500
+
 def fetch_releases(component: str) -> List[Dict[str, Any]]:
     if component not in {"fe", "mw", "be"}:
         raise HTTPException(status_code=400, detail="Invalid component. Use fe, mw, or be.")
@@ -124,7 +202,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
@@ -443,6 +521,238 @@ def get_partners(
     except Exception as e:
         logger.error(f"Error in get_partners: {e}")
         raise HTTPException(status_code=500, detail="Query failed")
+
+
+@app.get("/marriages/active/{person_id}")
+def get_active_marriage_for_person(person_id: int) -> List[Dict[str, Any]]:
+    try:
+        with engine.connect() as connection:
+            results_proxy = connection.execute(
+                text("call GetActiveMarriageForPerson(:personId)"),
+                {"personId": person_id}
+            )
+            results = results_proxy.fetchall()
+            return format_result(results)
+    except Exception as e:
+        logger.error(f"Error in get_active_marriage_for_person: {e}")
+        raise HTTPException(status_code=500, detail="Query failed")
+
+
+@app.get("/marriages/history/{person_id}")
+def get_marriage_history_for_person(person_id: int) -> List[Dict[str, Any]]:
+    try:
+        with engine.connect() as connection:
+            results_proxy = connection.execute(
+                text("call GetMarriageHistoryForPerson(:personId)"),
+                {"personId": person_id}
+            )
+            results = results_proxy.fetchall()
+            return format_result(results)
+    except Exception as e:
+        logger.error(f"Error in get_marriage_history_for_person: {e}")
+        raise HTTPException(status_code=500, detail="Query failed")
+
+
+@app.get("/marriages/pair/{person_a_id}/{person_b_id}")
+def get_active_marriage_for_pair(person_a_id: int, person_b_id: int) -> List[Dict[str, Any]]:
+    try:
+        with engine.connect() as connection:
+            results_proxy = connection.execute(
+                text("call GetActiveMarriageForPair(:personAId, :personBId)"),
+                {"personAId": person_a_id, "personBId": person_b_id}
+            )
+            results = results_proxy.fetchall()
+            return format_result(results)
+    except Exception as e:
+        logger.error(f"Error in get_active_marriage_for_pair: {e}")
+        raise HTTPException(status_code=500, detail="Query failed")
+
+
+@app.post("/marriages")
+def create_marriage(
+    request: Request,
+    marriage_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    require_admin_role(request)
+
+    person_a_id = _parse_required_int(
+        marriage_data.get("personAId", marriage_data.get("PersonAId")),
+        "personAId"
+    )
+    person_b_id = _parse_required_int(
+        marriage_data.get("personBId", marriage_data.get("PersonBId")),
+        "personBId"
+    )
+    start_date = _parse_required_date(
+        marriage_data.get("startDate", marriage_data.get("StartDate")),
+        "startDate"
+    )
+
+    if person_a_id == person_b_id:
+        raise HTTPException(status_code=400, detail="Een persoon kan niet met zichzelf trouwen")
+
+    try:
+        with engine.connect() as connection:
+            results_proxy = connection.execute(
+                text("call AddMarriage(:personAId, :personBId, :startDate)"),
+                {
+                    "personAId": person_a_id,
+                    "personBId": person_b_id,
+                    "startDate": start_date,
+                },
+            )
+            result_dict = _extract_proc_result(results_proxy.fetchall(), "AddMarriage")
+
+            if int(result_dict.get("CompletedOk", 1)) == 0:
+                connection.commit()
+                return {
+                    "success": True,
+                    "marriageId": result_dict.get("MarriageID"),
+                }
+
+            connection.rollback()
+            raise HTTPException(
+                status_code=_map_marriage_result_to_http(result_dict.get("Result")),
+                detail=result_dict.get("ErrorMessage") or "Huwelijk aanmaken mislukt",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in create_marriage: {e}")
+        raise HTTPException(status_code=500, detail="Create marriage failed")
+
+
+@app.put("/marriages/{marriage_id}")
+def end_marriage(
+    marriage_id: int,
+    request: Request,
+    marriage_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    require_admin_role(request)
+
+    person_a_id = _parse_required_int(
+        marriage_data.get("personAId", marriage_data.get("PersonAId")),
+        "personAId"
+    )
+    person_b_id = _parse_required_int(
+        marriage_data.get("personBId", marriage_data.get("PersonBId")),
+        "personBId"
+    )
+    end_date = _parse_required_date(
+        marriage_data.get("endDate", marriage_data.get("EndDate")),
+        "endDate"
+    )
+    end_reason = _parse_end_reason(
+        marriage_data.get("endReason", marriage_data.get("EndReason"))
+    )
+
+    if person_a_id == person_b_id:
+        raise HTTPException(status_code=400, detail="Een persoon kan niet met zichzelf gehuwd zijn")
+
+    try:
+        with engine.connect() as connection:
+            active_results_proxy = connection.execute(
+                text("call GetActiveMarriageForPair(:personAId, :personBId)"),
+                {"personAId": person_a_id, "personBId": person_b_id},
+            )
+            active_results = active_results_proxy.fetchall()
+
+            if not active_results:
+                raise HTTPException(status_code=404, detail="Geen actief huwelijk gevonden voor dit paar")
+
+            active_result = _extract_proc_result(active_results, "GetActiveMarriageForPair")
+            active_marriage_id = active_result.get("MarriageID")
+
+            if active_marriage_id is None:
+                raise HTTPException(status_code=404, detail="Geen actief huwelijk gevonden voor dit paar")
+
+            if int(active_marriage_id) != int(marriage_id):
+                raise HTTPException(
+                    status_code=409,
+                    detail="MarriageID komt niet overeen met actief huwelijk voor dit paar",
+                )
+
+            end_results_proxy = connection.execute(
+                text("call EndMarriage(:personAId, :personBId, :endDate, :endReason)"),
+                {
+                    "personAId": person_a_id,
+                    "personBId": person_b_id,
+                    "endDate": end_date,
+                    "endReason": end_reason,
+                },
+            )
+            end_result = _extract_proc_result(end_results_proxy.fetchall(), "EndMarriage")
+
+            if int(end_result.get("CompletedOk", 1)) == 0:
+                connection.commit()
+                return {"success": True, "marriageId": marriage_id}
+
+            connection.rollback()
+            raise HTTPException(
+                status_code=_map_marriage_result_to_http(end_result.get("Result")),
+                detail=end_result.get("ErrorMessage") or "Huwelijk beëindigen mislukt",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in end_marriage: {e}")
+        raise HTTPException(status_code=500, detail="Update marriage failed")
+
+
+@app.put("/marriages/{marriage_id}/start-date")
+def update_marriage_start_date(
+    marriage_id: int,
+    request: Request,
+    marriage_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    require_admin_role(request)
+
+    person_a_id = _parse_required_int(
+        marriage_data.get("personAId", marriage_data.get("PersonAId")),
+        "personAId"
+    )
+    person_b_id = _parse_required_int(
+        marriage_data.get("personBId", marriage_data.get("PersonBId")),
+        "personBId"
+    )
+    start_date = _parse_required_date(
+        marriage_data.get("startDate", marriage_data.get("StartDate")),
+        "startDate"
+    )
+
+    if person_a_id == person_b_id:
+        raise HTTPException(status_code=400, detail="Een persoon kan niet met zichzelf trouwen")
+
+    try:
+        with engine.connect() as connection:
+            update_results_proxy = connection.execute(
+                text("call UpdateMarriageStartDate(:marriageId, :personAId, :personBId, :startDate)"),
+                {
+                    "marriageId": marriage_id,
+                    "personAId": person_a_id,
+                    "personBId": person_b_id,
+                    "startDate": start_date,
+                },
+            )
+            update_result = _extract_proc_result(update_results_proxy.fetchall(), "UpdateMarriageStartDate")
+
+            if int(update_result.get("CompletedOk", 1)) == 0:
+                connection.commit()
+                return {
+                    "success": True,
+                    "marriageId": update_result.get("MarriageID", marriage_id),
+                }
+
+            connection.rollback()
+            raise HTTPException(
+                status_code=_map_marriage_result_to_http(update_result.get("Result")),
+                detail=update_result.get("ErrorMessage") or "Startdatum huwelijk wijzigen mislukt",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_marriage_start_date: {e}")
+        raise HTTPException(status_code=500, detail="Update marriage start date failed")
 
 
 @app.get("/GetReleases")

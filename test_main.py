@@ -1,7 +1,7 @@
 import pytest
 import tempfile
 from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from datetime import datetime, date
 from fastapi.testclient import TestClient
 from pathlib import Path
 
@@ -65,8 +65,8 @@ class TestRootEndpoint:
         response = client.get("/")
         
         assert response.status_code == 200
-        assert "Hello visitor" in response.json()
-        assert response.json()["Hello visitor"] == "The Familiez Fastapi api lives!"
+        assert response.json()["status"] == "OK"
+        assert response.json()["message"] == "Familiez API"
 
 
 class TestPingAPIEndpoint:
@@ -136,9 +136,11 @@ class TestPingDBEndpoint:
 class TestGetPersonsLikeEndpoint:
     """Test suite for the GetPersonsLike endpoint."""
 
+    @patch('main.verify_sso_token')
     @patch('main.engine')
-    def test_get_persons_like_with_results(self, mock_engine):
+    def test_get_persons_like_with_results(self, mock_engine, mock_verify_sso_token):
         """Test GetPersonsLike returns formatted results."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
         mock_connection = MagicMock()
         mock_engine.connect.return_value.__enter__.return_value = mock_connection
         
@@ -149,16 +151,21 @@ class TestGetPersonsLikeEndpoint:
         mock_results_proxy.fetchall.return_value = [mock_row]
         mock_connection.execute.return_value = mock_results_proxy
         
-        response = client.get("/GetPersonsLike?stringToSearchFor=John")
+        response = client.get(
+            "/GetPersonsLike?stringToSearchFor=John",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 200
         result = response.json()
         assert result[0]["numberOfRecords"] == 1
         assert result[1]["firstName"] == "John"
 
+    @patch('main.verify_sso_token')
     @patch('main.engine')
-    def test_get_persons_like_no_results(self, mock_engine):
+    def test_get_persons_like_no_results(self, mock_engine, mock_verify_sso_token):
         """Test GetPersonsLike with no matching results."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
         mock_connection = MagicMock()
         mock_engine.connect.return_value.__enter__.return_value = mock_connection
         
@@ -166,24 +173,37 @@ class TestGetPersonsLikeEndpoint:
         mock_results_proxy.fetchall.return_value = []
         mock_connection.execute.return_value = mock_results_proxy
         
-        response = client.get("/GetPersonsLike?stringToSearchFor=NonExistent")
+        response = client.get(
+            "/GetPersonsLike?stringToSearchFor=NonExistent",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 200
         result = response.json()
         assert result[0]["numberOfRecords"] == 0
 
-    def test_get_persons_like_missing_parameter(self):
+    @patch('main.verify_sso_token')
+    def test_get_persons_like_missing_parameter(self, mock_verify_sso_token):
         """Test GetPersonsLike without required parameter."""
-        response = client.get("/GetPersonsLike")
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
+        response = client.get(
+            "/GetPersonsLike",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 422  # Unprocessable Entity
 
+    @patch('main.verify_sso_token')
     @patch('main.engine')
-    def test_get_persons_like_query_error(self, mock_engine):
+    def test_get_persons_like_query_error(self, mock_engine, mock_verify_sso_token):
         """Test GetPersonsLike with database query error."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
         mock_engine.connect.return_value.__enter__.side_effect = Exception("Query error")
         
-        response = client.get("/GetPersonsLike?stringToSearchFor=test")
+        response = client.get(
+            "/GetPersonsLike?stringToSearchFor=test",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 500
         assert "Query failed" in response.json()["detail"]
@@ -192,9 +212,11 @@ class TestGetPersonsLikeEndpoint:
 class TestGetSiblingsEndpoint:
     """Test suite for the GetSiblings endpoint."""
 
+    @patch('main.verify_sso_token')
     @patch('main.engine')
-    def test_get_siblings_with_results(self, mock_engine):
+    def test_get_siblings_with_results(self, mock_engine, mock_verify_sso_token):
         """Test GetSiblings returns formatted results."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
         mock_connection = MagicMock()
         mock_engine.connect.return_value.__enter__.return_value = mock_connection
         
@@ -208,16 +230,21 @@ class TestGetSiblingsEndpoint:
         mock_results_proxy.fetchall.return_value = [mock_row1, mock_row2]
         mock_connection.execute.return_value = mock_results_proxy
         
-        response = client.get("/GetSiblings?parentID=1")
+        response = client.get(
+            "/GetSiblings?parentID=1",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 200
         result = response.json()
         assert result[0]["numberOfRecords"] == 2
         assert len(result) == 3  # numberOfRecords + 2 rows
 
+    @patch('main.verify_sso_token')
     @patch('main.engine')
-    def test_get_siblings_no_results(self, mock_engine):
+    def test_get_siblings_no_results(self, mock_engine, mock_verify_sso_token):
         """Test GetSiblings with no siblings found."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
         mock_connection = MagicMock()
         mock_engine.connect.return_value.__enter__.return_value = mock_connection
         
@@ -225,30 +252,48 @@ class TestGetSiblingsEndpoint:
         mock_results_proxy.fetchall.return_value = []
         mock_connection.execute.return_value = mock_results_proxy
         
-        response = client.get("/GetSiblings?parentID=999")
+        response = client.get(
+            "/GetSiblings?parentID=999",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 200
         result = response.json()
         assert result[0]["numberOfRecords"] == 0
 
-    def test_get_siblings_missing_parameter(self):
+    @patch('main.verify_sso_token')
+    def test_get_siblings_missing_parameter(self, mock_verify_sso_token):
         """Test GetSiblings without required parameter."""
-        response = client.get("/GetSiblings")
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
+        response = client.get(
+            "/GetSiblings",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 422
 
-    def test_get_siblings_invalid_parameter(self):
+    @patch('main.verify_sso_token')
+    def test_get_siblings_invalid_parameter(self, mock_verify_sso_token):
         """Test GetSiblings with invalid parentID parameter."""
-        response = client.get("/GetSiblings?parentID=invalid")
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
+        response = client.get(
+            "/GetSiblings?parentID=invalid",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 422
 
+    @patch('main.verify_sso_token')
     @patch('main.engine')
-    def test_get_siblings_database_error(self, mock_engine):
+    def test_get_siblings_database_error(self, mock_engine, mock_verify_sso_token):
         """Test GetSiblings with database error."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
         mock_engine.connect.return_value.__enter__.side_effect = Exception("DB error")
         
-        response = client.get("/GetSiblings?parentID=1")
+        response = client.get(
+            "/GetSiblings?parentID=1",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 500
         assert "Query failed" in response.json()["detail"]
@@ -257,9 +302,11 @@ class TestGetSiblingsEndpoint:
 class TestGetFatherEndpoint:
     """Test suite for the GetFather endpoint."""
 
+    @patch('main.verify_sso_token')
     @patch('main.engine')
-    def test_get_father_with_result(self, mock_engine):
+    def test_get_father_with_result(self, mock_engine, mock_verify_sso_token):
         """Test GetFather returns father information."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
         mock_connection = MagicMock()
         mock_engine.connect.return_value.__enter__.return_value = mock_connection
         
@@ -270,16 +317,21 @@ class TestGetFatherEndpoint:
         mock_results_proxy.fetchall.return_value = [mock_row]
         mock_connection.execute.return_value = mock_results_proxy
         
-        response = client.get("/GetFather?childID=5")
+        response = client.get(
+            "/GetFather?childID=5",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 200
         result = response.json()
         assert result[0]["numberOfRecords"] == 1
         assert result[1]["name"] == "John Sr"
 
+    @patch('main.verify_sso_token')
     @patch('main.engine')
-    def test_get_father_not_found(self, mock_engine):
+    def test_get_father_not_found(self, mock_engine, mock_verify_sso_token):
         """Test GetFather when father doesn't exist."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
         mock_connection = MagicMock()
         mock_engine.connect.return_value.__enter__.return_value = mock_connection
         
@@ -287,30 +339,48 @@ class TestGetFatherEndpoint:
         mock_results_proxy.fetchall.return_value = []
         mock_connection.execute.return_value = mock_results_proxy
         
-        response = client.get("/GetFather?childID=999")
+        response = client.get(
+            "/GetFather?childID=999",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 200
         result = response.json()
         assert result[0]["numberOfRecords"] == 0
 
-    def test_get_father_missing_parameter(self):
+    @patch('main.verify_sso_token')
+    def test_get_father_missing_parameter(self, mock_verify_sso_token):
         """Test GetFather without required parameter."""
-        response = client.get("/GetFather")
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
+        response = client.get(
+            "/GetFather",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 422
 
-    def test_get_father_invalid_parameter(self):
+    @patch('main.verify_sso_token')
+    def test_get_father_invalid_parameter(self, mock_verify_sso_token):
         """Test GetFather with invalid childID parameter."""
-        response = client.get("/GetFather?childID=notanumber")
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
+        response = client.get(
+            "/GetFather?childID=notanumber",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 422
 
+    @patch('main.verify_sso_token')
     @patch('main.engine')
-    def test_get_father_database_error(self, mock_engine):
+    def test_get_father_database_error(self, mock_engine, mock_verify_sso_token):
         """Test GetFather with database error."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
         mock_engine.connect.return_value.__enter__.side_effect = Exception("DB connection lost")
         
-        response = client.get("/GetFather?childID=1")
+        response = client.get(
+            "/GetFather?childID=1",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
         
         assert response.status_code == 500
         assert "Query failed" in response.json()["detail"]
@@ -420,6 +490,106 @@ class TestGetPartnersEndpoint:
 
         assert response.status_code == 500
         assert "Query failed" in response.json()["detail"]
+
+
+class TestGetPossibleBasedOnAgeEndpoints:
+    """Smoke tests for possible parent/partner age-based endpoints."""
+
+    @patch('main.verify_sso_token')
+    @patch('main.engine')
+    def test_get_possible_mothers_based_on_age_calls_sproc(self, mock_engine, mock_verify_sso_token):
+        """GetPossibleMothersBasedOnAge should call the matching stored procedure."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        mock_row = Mock()
+        mock_row._asdict.return_value = {
+            "PossibleMotherID": 101,
+            "PossibleMother": "Anna Example",
+            "PersonDateOfBirth": "1970-01-01",
+        }
+        mock_results_proxy = Mock()
+        mock_results_proxy.fetchall.return_value = [mock_row]
+        mock_connection.execute.return_value = mock_results_proxy
+
+        response = client.get(
+            "/GetPossibleMothersBasedOnAge?personDateOfBirth=1990-01-01",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result[0]["numberOfRecords"] == 1
+        assert result[1]["PossibleMotherID"] == 101
+
+        call_args = mock_connection.execute.call_args
+        assert "getPossibleMothersBasedOnAge" in str(call_args[0][0])
+        assert call_args[0][1]["personAgeIn"] == date(1990, 1, 1)
+
+    @patch('main.verify_sso_token')
+    @patch('main.engine')
+    def test_get_possible_fathers_based_on_age_calls_sproc(self, mock_engine, mock_verify_sso_token):
+        """GetPossibleFathersBasedOnAge should call the matching stored procedure."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        mock_row = Mock()
+        mock_row._asdict.return_value = {
+            "PossibleFatherID": 202,
+            "PossibleFather": "John Example",
+            "PersonDateOfBirth": "1968-01-01",
+        }
+        mock_results_proxy = Mock()
+        mock_results_proxy.fetchall.return_value = [mock_row]
+        mock_connection.execute.return_value = mock_results_proxy
+
+        response = client.get(
+            "/GetPossibleFathersBasedOnAge?personDateOfBirth=1990-01-01",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result[0]["numberOfRecords"] == 1
+        assert result[1]["PossibleFatherID"] == 202
+
+        call_args = mock_connection.execute.call_args
+        assert "getPossibleFathersBasedOnAge" in str(call_args[0][0])
+        assert call_args[0][1]["personAgeIn"] == date(1990, 1, 1)
+
+    @patch('main.verify_sso_token')
+    @patch('main.engine')
+    def test_get_possible_partners_based_on_age_calls_sproc(self, mock_engine, mock_verify_sso_token):
+        """GetPossiblePartnersBasedOnAge should call the matching stored procedure."""
+        mock_verify_sso_token.return_value = {"sub": "test-user"}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        mock_row = Mock()
+        mock_row._asdict.return_value = {
+            "PossiblePartnerID": 303,
+            "PossiblePartner": "Pat Example",
+            "PersonDateOfBirth": "1991-01-01",
+        }
+        mock_results_proxy = Mock()
+        mock_results_proxy.fetchall.return_value = [mock_row]
+        mock_connection.execute.return_value = mock_results_proxy
+
+        response = client.get(
+            "/GetPossiblePartnersBasedOnAge?personDateOfBirth=1990-01-01",
+            headers={"Authorization": "Bearer valid-test-token"},
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result[0]["numberOfRecords"] == 1
+        assert result[1]["PossiblePartnerID"] == 303
+
+        call_args = mock_connection.execute.call_args
+        assert "getPossiblePartnersBasedOnAge" in str(call_args[0][0])
+        assert call_args[0][1]["personAgeIn"] == date(1990, 1, 1)
 
 
 class TestFetchReleases:
