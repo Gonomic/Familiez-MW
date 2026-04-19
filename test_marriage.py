@@ -88,6 +88,40 @@ class TestMarriageEndpoints:
         mock_connection.commit.assert_called_once()
 
     @patch("main.engine")
+    def test_create_marriage_passes_marriage_place_to_sproc(self, mock_engine, admin_session):
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        add_result_row = Mock()
+        add_result_row._asdict.return_value = {
+            "CompletedOk": 0,
+            "Result": 0,
+            "MarriageID": 101,
+            "ErrorMessage": None,
+        }
+        add_result_proxy = Mock()
+        add_result_proxy.fetchall.return_value = [add_result_row]
+        mock_connection.execute.return_value = add_result_proxy
+
+        response = client.post(
+            "/marriages",
+            json={
+                "personAId": 11,
+                "personBId": 22,
+                "startDate": "2026-04-16",
+                "marriagePlace": "Amsterdam",
+            },
+            cookies={"familiez_session": "ok"},
+        )
+
+        assert response.status_code == 200
+
+        call_args = mock_connection.execute.call_args
+        assert call_args is not None
+        assert "AddMarriage_v2" in str(call_args[0][0])
+        assert call_args[0][1]["marriagePlace"] == "Amsterdam"
+
+    @patch("main.engine")
     def test_create_marriage_maps_conflict_from_sproc(self, mock_engine, admin_session):
         mock_connection = MagicMock()
         mock_engine.connect.return_value.__enter__.return_value = mock_connection
@@ -247,6 +281,41 @@ class TestMarriageEndpoints:
         assert response.status_code == 200
         assert response.json() == {"success": True, "marriageId": 77}
         mock_connection.commit.assert_called_once()
+
+    @patch("main.engine")
+    def test_update_marriage_start_date_passes_marriage_place_to_sproc(self, mock_engine, admin_session):
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        update_row = Mock()
+        update_row._asdict.return_value = {
+            "CompletedOk": 0,
+            "Result": 0,
+            "MarriageID": 77,
+            "ErrorMessage": None,
+        }
+        update_proxy = Mock()
+        update_proxy.fetchall.return_value = [update_row]
+
+        mock_connection.execute.return_value = update_proxy
+
+        response = client.put(
+            "/marriages/77/start-date",
+            json={
+                "personAId": 11,
+                "personBId": 33,
+                "startDate": "2026-04-20",
+                "marriagePlace": "Den Haag",
+            },
+            cookies={"familiez_session": "ok"},
+        )
+
+        assert response.status_code == 200
+
+        call_args = mock_connection.execute.call_args
+        assert call_args is not None
+        assert "UpdateMarriageStartDate_v2" in str(call_args[0][0])
+        assert call_args[0][1]["marriagePlace"] == "Den Haag"
 
     @patch("main.engine")
     def test_update_marriage_start_date_blocks_on_overlap_conflict(self, mock_engine, admin_session):

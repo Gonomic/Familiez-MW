@@ -1,7 +1,7 @@
 import os
 import logging
 from datetime import datetime, date
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
@@ -131,6 +131,23 @@ def _parse_required_date(value: Any, field_name: str) -> date:
         return datetime.strptime(value.strip(), "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail=f"{field_name} moet formaat YYYY-MM-DD hebben")
+
+
+def _parse_optional_text(value: Any, field_name: str, max_length: int = 255) -> Optional[str]:
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail=f"{field_name} moet een tekstwaarde zijn")
+
+    normalized = value.strip()
+    if normalized == "":
+        return None
+
+    if len(normalized) > max_length:
+        raise HTTPException(status_code=400, detail=f"{field_name} mag maximaal {max_length} tekens bevatten")
+
+    return normalized
 
 
 def _parse_end_reason(value: Any) -> str:
@@ -587,6 +604,11 @@ def create_marriage(
         marriage_data.get("startDate", marriage_data.get("StartDate")),
         "startDate"
     )
+    marriage_place = _parse_optional_text(
+        marriage_data.get("marriagePlace", marriage_data.get("MarriagePlace")),
+        "marriagePlace",
+        max_length=100,
+    )
 
     if person_a_id == person_b_id:
         raise HTTPException(status_code=400, detail="Een persoon kan niet met zichzelf trouwen")
@@ -594,11 +616,12 @@ def create_marriage(
     try:
         with engine.connect() as connection:
             results_proxy = connection.execute(
-                text("call AddMarriage(:personAId, :personBId, :startDate)"),
+                text("call AddMarriage_v2(:personAId, :personBId, :startDate, :marriagePlace)"),
                 {
                     "personAId": person_a_id,
                     "personBId": person_b_id,
                     "startDate": start_date,
+                    "marriagePlace": marriage_place,
                 },
             )
             result_dict = _extract_proc_result(results_proxy.fetchall(), "AddMarriage")
@@ -719,6 +742,11 @@ def update_marriage_start_date(
         marriage_data.get("startDate", marriage_data.get("StartDate")),
         "startDate"
     )
+    marriage_place = _parse_optional_text(
+        marriage_data.get("marriagePlace", marriage_data.get("MarriagePlace")),
+        "marriagePlace",
+        max_length=100,
+    )
 
     if person_a_id == person_b_id:
         raise HTTPException(status_code=400, detail="Een persoon kan niet met zichzelf trouwen")
@@ -726,12 +754,13 @@ def update_marriage_start_date(
     try:
         with engine.connect() as connection:
             update_results_proxy = connection.execute(
-                text("call UpdateMarriageStartDate(:marriageId, :personAId, :personBId, :startDate)"),
+                text("call UpdateMarriageStartDate_v2(:marriageId, :personAId, :personBId, :startDate, :marriagePlace)"),
                 {
                     "marriageId": marriage_id,
                     "personAId": person_a_id,
                     "personBId": person_b_id,
                     "startDate": start_date,
+                    "marriagePlace": marriage_place,
                 },
             )
             update_result = _extract_proc_result(update_results_proxy.fetchall(), "UpdateMarriageStartDate")
@@ -753,6 +782,70 @@ def update_marriage_start_date(
     except Exception as e:
         logger.error(f"Error in update_marriage_start_date: {e}")
         raise HTTPException(status_code=500, detail="Update marriage start date failed")
+
+
+@app.get("/marriages/possible-pairs")
+def get_possible_marriage_pairs() -> List[Dict[str, Any]]:
+    """Get partner pairs that don't have an active marriage."""
+    try:
+        with engine.connect() as connection:
+            results_proxy = connection.execute(
+                text("""
+                    SELECT
+                        LEAST(R.RelationPerson, R.RelationWithPerson) AS PersonAId,
+                        CONCAT_WS(' ',
+                            PA.PersonGivvenName,
+                            PA.PersonFamilyName
+                        ) AS PersonAName,
+                        PA.PersonDateOfBirth AS PersonADateOfBirth,
+                        GREATEST(R.RelationPerson, R.RelationWithPerson) AS PersonBId,
+                        CONCAT_WS(' ',
+                            PB.PersonGivvenName,
+                            PB.PersonFamilyName
+                        ) AS PersonBName,
+                        PB.PersonDateOfBirth AS PersonBDateOfBirth
+                    FROM relations R
+                    INNER JOIN persons PA
+                        ON PA.PersonID = LEAST(R.RelationPerson, R.RelationWithPerson)
+                    INNER JOIN persons PB
+                        ON PB.PersonID = GREATEST(R.RelationPerson, R.RelationWithPerson)
+                    LEFT JOIN marriages M
+                        ON M.EndDate IS NULL
+                        AND (
+                            (
+                                M.PartnerAID = LEAST(R.RelationPerson, R.RelationWithPerson)
+                                AND M.PartnerBID = GREATEST(R.RelationPerson, R.RelationWithPerson)
+                            )
+                            OR
+                            (
+                                M.PartnerBID = LEAST(R.RelationPerson, R.RelationWithPerson)
+                                AND M.PartnerAID = GREATEST(R.RelationPerson, R.RelationWithPerson)
+                            )
+                        )
+                    WHERE R.RelationName = 3
+                        AND R.RelationPerson IS NOT NULL
+                        AND R.RelationWithPerson IS NOT NULL
+                        AND R.RelationPerson <> R.RelationWithPerson
+                        AND M.MarriageID IS NULL
+                    GROUP BY
+                        LEAST(R.RelationPerson, R.RelationWithPerson),
+                        GREATEST(R.RelationPerson, R.RelationWithPerson)
+                    ORDER BY PersonAId, PersonBId
+                """)
+            )
+            results = results_proxy.fetchall()
+            pairs_without_marriage = [row._asdict() for row in results]
+
+            if not pairs_without_marriage:
+                return [{"numberOfRecords": 0}]
+
+            return [
+                {"numberOfRecords": len(pairs_without_marriage)},
+                *pairs_without_marriage,
+            ]
+    except Exception as e:
+        logger.error(f"Error in get_possible_marriage_pairs: {e}")
+        raise HTTPException(status_code=500, detail="Query failed")
 
 
 @app.get("/GetReleases")
