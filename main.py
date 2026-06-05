@@ -428,13 +428,19 @@ def oauth_callback(request_data: Dict[str, str]) -> Dict[str, str]:
     - Sets session cookie if USE_SERVER_SESSIONS=true
     """
     code = request_data.get("code", "").strip()
+    redirect_uri = request_data.get("redirect_uri", "").strip()
+    client_id = request_data.get("client_id", "").strip()
     
     if not code:
         logger.error("OAuth callback missing authorization code")
         raise HTTPException(status_code=400, detail="Missing code")
     
     try:
-        access_token, user_access = exchange_authorization_code(code)
+        access_token, user_access = exchange_authorization_code(
+            code,
+            redirect_uri_override=redirect_uri,
+            client_id_override=client_id,
+        )
         response = JSONResponse({"access_token": access_token})
         
         # Create server-side session if enabled

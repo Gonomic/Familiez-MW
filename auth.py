@@ -18,6 +18,68 @@ ROLE_USER = "user"
 ROLE_NONE = "none"
 
 
+def _get_oauth_client_configs() -> List[Dict[str, str]]:
+    configs: List[Dict[str, str]] = []
+
+    primary_client_id = os.getenv("SYNOLOGY_CLIENT_ID", "").strip()
+    primary_redirect_uri = os.getenv("SYNOLOGY_REDIRECT_URI", "").strip()
+    primary_client_secret = os.getenv("SYNOLOGY_CLIENT_SECRET", "").strip()
+    if primary_client_id and primary_redirect_uri:
+        configs.append(
+            {
+                "name": "primary",
+                "client_id": primary_client_id,
+                "client_secret": primary_client_secret,
+                "redirect_uri": primary_redirect_uri,
+            }
+        )
+
+    local_client_id = os.getenv("SYNOLOGY_CLIENT_ID_LOCAL", "").strip()
+    local_redirect_uri = os.getenv("SYNOLOGY_REDIRECT_URI_LOCAL", "").strip()
+    local_client_secret = os.getenv("SYNOLOGY_CLIENT_SECRET_LOCAL", "").strip()
+    if local_client_id and local_redirect_uri:
+        configs.append(
+            {
+                "name": "local",
+                "client_id": local_client_id,
+                "client_secret": local_client_secret,
+                "redirect_uri": local_redirect_uri,
+            }
+        )
+
+    return configs
+
+
+def _resolve_oauth_client_config(redirect_uri_override: str = "", client_id_override: str = "") -> Dict[str, str]:
+    configs = _get_oauth_client_configs()
+    if not configs:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No Synology OAuth client configuration found",
+        )
+
+    selected = configs[0]
+
+    redirect_uri_override = str(redirect_uri_override or "").strip()
+    if redirect_uri_override:
+        selected_match = next((cfg for cfg in configs if cfg["redirect_uri"] == redirect_uri_override), None)
+        if not selected_match:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unknown redirect_uri for configured Synology clients",
+            )
+        selected = selected_match
+
+    client_id_override = str(client_id_override or "").strip()
+    if client_id_override and client_id_override != selected["client_id"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="client_id does not match configured redirect_uri",
+        )
+
+    return selected
+
+
 def _get_env_bool(name: str, default: str = "true") -> bool:
     value = os.getenv(name, default).strip().lower()
     return value in {"1", "true", "yes", "on"}
@@ -131,11 +193,11 @@ def verify_sso_token(token: str) -> Dict[str, Any]:
         logger.warning("Failed to parse JWK: %s", exc)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    audience = os.getenv("SYNOLOGY_CLIENT_ID", "").strip()
-    if not audience:
+    oauth_client_ids = [cfg["client_id"] for cfg in _get_oauth_client_configs() if cfg.get("client_id")]
+    if not oauth_client_ids:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="SYNOLOGY_CLIENT_ID is not configured",
+            detail="No Synology OAuth client_id configured",
         )
 
     try:
@@ -144,7 +206,7 @@ def verify_sso_token(token: str) -> Dict[str, Any]:
             token,
             public_key,
             algorithms=[unverified_header.get("alg", "RS256")],
-            audience=audience,
+            audience=oauth_client_ids if len(oauth_client_ids) > 1 else oauth_client_ids[0],
             issuer=issuer,
             leeway=leeway_seconds,
         )
@@ -396,7 +458,12 @@ def require_sso_auth(request: Request) -> Dict[str, Any]:
     return verify_sso_token(token)
 
 
-def exchange_authorization_code(code: str, code_verifier: str = "") -> Tuple[str, Dict[str, Any]]:
+def exchange_authorization_code(
+    code: str,
+    code_verifier: str = "",
+    redirect_uri_override: str = "",
+    client_id_override: str = "",
+) -> Tuple[str, Dict[str, Any]]:
     """Exchange OAuth authorization code for JWT token and extract user info.
     
     Args:
@@ -416,27 +483,21 @@ def exchange_authorization_code(code: str, code_verifier: str = "") -> Tuple[str
             detail="token_endpoint is missing from discovery document",
         )
     
-    client_id = os.getenv("SYNOLOGY_CLIENT_ID", "")
-    if not client_id:
-        logger.error("SYNOLOGY_CLIENT_ID is not configured")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="SYNOLOGY_CLIENT_ID is not configured",
-        )
-    
-    # Get redirect URI from environment (must match what's configured on Synology)
-    redirect_uri = os.getenv("SYNOLOGY_REDIRECT_URI", "http://localhost:5173/auth/callback")
+    oauth_client = _resolve_oauth_client_config(
+        redirect_uri_override=redirect_uri_override,
+        client_id_override=client_id_override,
+    )
     
     # Prepare token exchange request (Synology doesn't support PKCE)
     token_request = {
         "grant_type": "authorization_code",
         "code": code,
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
+        "client_id": oauth_client["client_id"],
+        "redirect_uri": oauth_client["redirect_uri"],
     }
     
     # Add client secret if configured (required by Synology)
-    client_secret = os.getenv("SYNOLOGY_CLIENT_SECRET", "").strip()
+    client_secret = oauth_client.get("client_secret", "").strip()
     if client_secret:
         token_request["client_secret"] = client_secret
     
