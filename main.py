@@ -374,7 +374,7 @@ async def require_sso_middleware(request: Request, call_next):
         return create_cors_json_response(401, {"detail": "Missing or invalid token"}, origin)
 
     try:
-        claims = verify_sso_token(token)
+        claims = verify_sso_token(token, request=request)
         request.state.user = claims
         request.state.user_access = resolve_ldap_role_from_claims(claims)
     except HTTPException as exc:

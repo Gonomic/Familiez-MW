@@ -168,7 +168,7 @@ def _find_jwk(kid: str, jwks: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
-def verify_sso_token(token: str) -> Dict[str, Any]:
+def verify_sso_token(token: str, request: Optional[Request] = None) -> Dict[str, Any]:
     discovery = _get_discovery()
     issuer = discovery.get("issuer")
     jwks = _get_jwks()
@@ -214,19 +214,18 @@ def verify_sso_token(token: str) -> Dict[str, Any]:
     except jwt.ExpiredSignatureError:
         # Fallback: check server-side session
         from session_manager import validate_session
-        import fastapi
         session_id = None
-        if hasattr(fastapi, 'Request'):
-            # Probeer session cookie te pakken uit FastAPI request
+        if request is not None:
+            session_id = (request.cookies.get("familiez_session") or "").strip()
+        elif hasattr(Request, "cookies"):
             try:
-                request = fastapi.Request
-                session_id = request.cookies.get("familiez_session")
+                session_id = (Request.cookies.get("familiez_session") or "").strip()
             except Exception:
                 session_id = None
         if session_id:
             user_info = validate_session(session_id)
             if user_info:
-                logger.info("Token expired, maar geldige server-side sessie.")
+                logger.info("Token expired, but a valid server-side session was found.")
                 return user_info
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except jwt.PyJWTError as exc:
@@ -455,7 +454,7 @@ def require_sso_auth(request: Request) -> Dict[str, Any]:
             return {"user": user}
     """
     token = _extract_bearer_token(request)
-    return verify_sso_token(token)
+    return verify_sso_token(token, request=request)
 
 
 def exchange_authorization_code(
