@@ -1,4 +1,6 @@
+import jwt
 import auth
+import session_manager
 
 
 def test_extract_username_from_claims_strips_domain_by_default(monkeypatch):
@@ -70,3 +72,28 @@ def test_resolve_ldap_role_from_claims_merges_claims(monkeypatch):
 
     assert merged["role"] == "admin"
     assert merged["is_admin"] is True
+
+
+def test_verify_sso_token_uses_request_session_cookie_when_token_expired(monkeypatch):
+    class DummyRequest:
+        def __init__(self):
+            self.cookies = {"familiez_session": "session-123"}
+
+    request = DummyRequest()
+
+    monkeypatch.setattr(auth, "_get_discovery", lambda: {"issuer": "https://issuer.example"})
+    monkeypatch.setattr(auth, "_get_jwks", lambda: {"keys": [{"kid": "test-kid"}]})
+    monkeypatch.setattr(auth, "_get_oauth_client_configs", lambda: [{"client_id": "test-client"}])
+    monkeypatch.setattr(auth.jwt, "get_unverified_header", lambda token: {"kid": "test-kid"})
+    monkeypatch.setattr(auth, "_find_jwk", lambda kid, jwks: {"kid": kid})
+    monkeypatch.setattr(auth.jwt.algorithms.RSAAlgorithm, "from_jwk", lambda jwk: object())
+
+    def raise_expired(*args, **kwargs):
+        raise jwt.ExpiredSignatureError("expired")
+
+    monkeypatch.setattr(auth.jwt, "decode", raise_expired)
+    monkeypatch.setattr(session_manager, "validate_session", lambda session_id: {"username": "test.user"})
+
+    claims = auth.verify_sso_token("expired-token", request=request)
+
+    assert claims["username"] == "test.user"
