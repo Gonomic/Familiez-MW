@@ -272,6 +272,7 @@ def _default_user_preferences_payload(username: str) -> Dict[str, Any]:
         "generations_up": 3,
         "generations_down": 3,
         "auto_show_tree": False,
+        "last_added_person_id": None,
     }
 
 
@@ -283,6 +284,7 @@ def _normalize_preferences_row(row_dict: Dict[str, Any], username_fallback: str)
         "generations_up": int(row_dict.get("generations_up") or 3),
         "generations_down": int(row_dict.get("generations_down") or 3),
         "auto_show_tree": bool(row_dict.get("auto_show_tree", 0)),
+        "last_added_person_id": row_dict.get("last_added_person_id"),
     }
 
 def fetch_releases(component: str) -> List[Dict[str, Any]]:
@@ -505,6 +507,12 @@ def set_my_preferences(request: Request, preferences_data: Dict[str, Any]) -> Di
     generations_down = _parse_generation_count(preferences_data.get("generations_down"), "generations_down", default_value=3)
     auto_show_tree = _parse_auto_show_flag(preferences_data.get("auto_show_tree"))
 
+    has_last_added = "last_added_person_id" in preferences_data
+    if has_last_added:
+        last_added_person_id = _parse_optional_person_id(preferences_data.get("last_added_person_id"))
+    else:
+        last_added_person_id = None
+
     try:
         with engine.connect() as connection:
             if linked_person_id is not None:
@@ -519,14 +527,40 @@ def set_my_preferences(request: Request, preferences_data: Dict[str, Any]) -> Di
                         detail=f"linked_person_id {linked_person_id} bestaat niet in de persons-tabel",
                     )
 
+            if not has_last_added:
+                cur_prefs_proxy = connection.execute(
+                    text("call GetUserPreferences(:usernameIn)"),
+                    {"usernameIn": username},
+                )
+                cur_rows = cur_prefs_proxy.fetchall() if hasattr(cur_prefs_proxy, "fetchall") else []
+                if cur_rows and len(cur_rows) > 0:
+                    first_row = cur_rows[0]
+                    if hasattr(first_row, "_asdict"):
+                        cur_dict = first_row._asdict()
+                    elif isinstance(first_row, dict):
+                        cur_dict = first_row
+                    else:
+                        cur_dict = {}
+                    last_added_person_id = cur_dict.get("last_added_person_id")
+
+            if last_added_person_id is not None:
+                last_added_exists_row = connection.execute(
+                    text("SELECT COUNT(*) AS NumberOfRecords FROM persons WHERE PersonID = :personId"),
+                    {"personId": last_added_person_id},
+                ).fetchone()
+                last_added_exists_count = int(last_added_exists_row.NumberOfRecords if last_added_exists_row else 0)
+                if last_added_exists_count < 1:
+                    last_added_person_id = None
+
             results_proxy = connection.execute(
-                text("call SetUserPreferences(:usernameIn, :personIdIn, :genUpIn, :genDownIn, :autoShowIn)"),
+                text("call SetUserPreferences(:usernameIn, :personIdIn, :genUpIn, :genDownIn, :autoShowIn, :lastAddedPersonIdIn)"),
                 {
                     "usernameIn": username,
                     "personIdIn": linked_person_id,
                     "genUpIn": generations_up,
                     "genDownIn": generations_down,
                     "autoShowIn": auto_show_tree,
+                    "lastAddedPersonIdIn": last_added_person_id,
                 },
             )
             results = results_proxy.fetchall()
@@ -547,6 +581,7 @@ def set_my_preferences(request: Request, preferences_data: Dict[str, Any]) -> Di
                 "generations_up": generations_up,
                 "generations_down": generations_down,
                 "auto_show_tree": bool(auto_show_tree),
+                "last_added_person_id": last_added_person_id,
             }
     except HTTPException:
         raise
@@ -1253,10 +1288,48 @@ def add_person(
                         return {"success": False, "error": "Database procedure mislukt"}
 
                     if 'PersonID' in result_dict and result_dict.get('PersonID') is not None:
+                        new_person_id = result_dict.get('PersonID')
+                        username = _extract_username_from_request(request)
+
+                        try:
+                            cur_prefs_proxy = connection.execute(
+                                text("call GetUserPreferences(:usernameIn)"),
+                                {"usernameIn": username},
+                            )
+                            cur_rows = cur_prefs_proxy.fetchall() if hasattr(cur_prefs_proxy, "fetchall") else []
+                            if cur_rows and len(cur_rows) > 0:
+                                first_row = cur_rows[0]
+                                if hasattr(first_row, "_asdict"):
+                                    cur_dict = first_row._asdict()
+                                elif isinstance(first_row, dict):
+                                    cur_dict = first_row
+                                else:
+                                    cur_dict = {}
+                                linked_p = cur_dict.get("linked_person_id")
+                                gen_u = cur_dict.get("generations_up", 3)
+                                gen_d = cur_dict.get("generations_down", 3)
+                                auto_s = cur_dict.get("auto_show_tree", 0)
+                            else:
+                                linked_p, gen_u, gen_d, auto_s = None, 3, 3, 0
+
+                            connection.execute(
+                                text("call SetUserPreferences(:usernameIn, :personIdIn, :genUpIn, :genDownIn, :autoShowIn, :lastAddedPersonIdIn)"),
+                                {
+                                    "usernameIn": username,
+                                    "personIdIn": linked_p,
+                                    "genUpIn": gen_u,
+                                    "genDownIn": gen_d,
+                                    "autoShowIn": auto_s,
+                                    "lastAddedPersonIdIn": new_person_id,
+                                },
+                            )
+                        except Exception as pref_err:
+                            logger.warning(f"Could not update last_added_person_id for user {username}: {pref_err}")
+
                         connection.commit()
                         return {
                             "success": True,
-                            "personId": result_dict.get('PersonID')
+                            "personId": new_person_id
                         }
                 
                 connection.commit()

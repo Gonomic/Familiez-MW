@@ -901,9 +901,8 @@ class TestPersonWriteEndpoints:
 
         assert response.status_code == 200
         assert response.json() == {'success': True, 'personId': 321}
-        assert mock_connection.execute.call_count == 1
 
-        call_args = mock_connection.execute.call_args
+        call_args = mock_connection.execute.call_args_list[0]
         assert 'AddPerson_v2' in str(call_args[0][0])
         assert call_args[0][1]['birthStatus'] == 0
         assert call_args[0][1]['deathStatus'] == 0
@@ -938,6 +937,7 @@ class TestUserPreferencesEndpoints:
             'generations_up': 3,
             'generations_down': 3,
             'auto_show_tree': False,
+            'last_added_person_id': None,
         }
 
     @patch('main.resolve_ldap_role_from_claims')
@@ -957,6 +957,7 @@ class TestUserPreferencesEndpoints:
             'generations_up': 4,
             'generations_down': 2,
             'auto_show_tree': 1,
+            'last_added_person_id': 88,
         }
 
         mock_results_proxy = Mock()
@@ -975,6 +976,7 @@ class TestUserPreferencesEndpoints:
             'generations_up': 4,
             'generations_down': 2,
             'auto_show_tree': True,
+            'last_added_person_id': 88,
         }
 
     @patch('main.resolve_ldap_role_from_claims')
@@ -1035,6 +1037,7 @@ class TestUserPreferencesEndpoints:
                 'generations_up': 5,
                 'generations_down': 1,
                 'auto_show_tree': True,
+                'last_added_person_id': None,
             },
         )
 
@@ -1045,6 +1048,7 @@ class TestUserPreferencesEndpoints:
             'generations_up': 5,
             'generations_down': 1,
             'auto_show_tree': True,
+            'last_added_person_id': None,
         }
 
         assert mock_connection.commit.call_count == 1
