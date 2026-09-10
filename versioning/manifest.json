@@ -1,0 +1,928 @@
+{
+  "component": "MW",
+  "dockerImageTag": "familiez-mw:1.0.0",
+  "functions": [
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 395,
+      "methods": [
+        "GET"
+      ],
+      "name": "read_root",
+      "options": {},
+      "parameters": [],
+      "path": "/",
+      "returnAnnotation": "Dict[str, str]",
+      "signatureHash": "sha256:b558930db9b9e9933a6d8efafbe6ef0f05859667b4fd575b0bfd4f7dd4376c9a"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 400,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_oidc_discovery",
+      "options": {},
+      "parameters": [],
+      "path": "/auth/discovery",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:b74faf8e820e097c8697d54215fb6160ef4e78669bd6d9ab58cff169fd9096cc"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 419,
+      "methods": [
+        "POST"
+      ],
+      "name": "oauth_callback",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Dict[str, str]",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request_data"
+        }
+      ],
+      "path": "/auth/callback",
+      "returnAnnotation": "Dict[str, str]",
+      "signatureHash": "sha256:d7ab69cf05b5852cc703a3e055e6a9a5da40d79f930457838a3dce120af34d81"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 463,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_authenticated_user",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        }
+      ],
+      "path": "/auth/me",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:aa4f9ac453cb6fd9af020999e99a7a97c23e1983dbbfc2fc14657e46fabeff67"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 477,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_my_preferences",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        }
+      ],
+      "path": "/user/my-preferences",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:777e1649ea8216b54598ad8e928e568c0a5843a8dd878d9be30a3e387f2cea7e"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 502,
+      "methods": [
+        "PUT"
+      ],
+      "name": "set_my_preferences",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "Dict[str, Any]",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "preferences_data"
+        }
+      ],
+      "path": "/user/my-preferences",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:960c2cb54dada7cc569a552192718bdd88374e98a7b7f3631baa2cdaee463ee2"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 593,
+      "methods": [
+        "POST"
+      ],
+      "name": "session_keepalive",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        }
+      ],
+      "path": "/auth/keepalive",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:f3015fccccbd8f2d03f6b150ec1d6ab20704c684e0c65f7f52780be061157f64"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 607,
+      "methods": [
+        "POST"
+      ],
+      "name": "logout",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        }
+      ],
+      "path": "/auth/logout",
+      "returnAnnotation": "Dict[str, str]",
+      "signatureHash": "sha256:f03344392939ac7cfe56b4f85bc948843509be9a5e223fbd077c69d376f00e71"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 624,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_session_info_debug",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        }
+      ],
+      "path": "/auth/session-info",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:feb9308d1246b90370fa7d14ec8c7ac71a8e38028be2ce84acff95d52c90cb75"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 633,
+      "methods": [
+        "GET"
+      ],
+      "name": "ping_api",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "datetime",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "timestampFE"
+        }
+      ],
+      "path": "/pingAPI",
+      "returnAnnotation": "List[Dict[str, str]]",
+      "signatureHash": "sha256:c2c9a63098fe70d0ac704761a8e0f506bc41e840a735016f8170ae49ebd93391"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 641,
+      "methods": [
+        "GET"
+      ],
+      "name": "ping_db",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "datetime",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "timestampFE"
+        }
+      ],
+      "path": "/pingDB",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:94e1d5dc0adb94941e2deb5e7a5addcbc22192b10f71355d3f5195a21b6badf0"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 660,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_persons_like",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "str",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "stringToSearchFor"
+        }
+      ],
+      "path": "/GetPersonsLike",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:44562a7f9100b32c5f9c75801f7a265ce7bcd529639095c6b75dbc81dc721779"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 677,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_siblings",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "parentID"
+        }
+      ],
+      "path": "/GetSiblings",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:505ee0b85c039e8827f7e6d30977beabb43e48b5c3078e92ecb5332deeb039ed"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 695,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_father",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "childID"
+        }
+      ],
+      "path": "/GetFather",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:bcfcb66386dba4fe91ce88dc11435f1a73f45dcb530d79800990c669d15418d0"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 713,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_person_details",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "personID"
+        }
+      ],
+      "path": "/GetPersonDetails",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:11bee395e12cd5cd5a75f254be346193bc62638c2bdbe2ce8803ed6b49f0981e"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 731,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_mother",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "childID"
+        }
+      ],
+      "path": "/GetMother",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:5ed8e3d76f354b14bb22feec6634e537550a554e56ee7907456039093b589f02"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 750,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_children",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "personID"
+        }
+      ],
+      "path": "/GetChildren",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:206ec5bf1d6ef2f4ac9b01b192170a320938dede822072764e56ab04a29b6305"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 769,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_partners",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "personID"
+        }
+      ],
+      "path": "/GetPartners",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:4ad4d1172c026c61ea4611ef67550fd2b263801259a00854430a88d2db76ea8b"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 787,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_active_marriage_for_person",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "person_id"
+        }
+      ],
+      "path": "/marriages/active/{person_id}",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:95785a6a2a7954de6a397f007ce054cf7d483ef7aecffdbe252dd7a42eb4dc05"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 803,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_marriage_history_for_person",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "person_id"
+        }
+      ],
+      "path": "/marriages/history/{person_id}",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:d8cca103c611bb29a324f2ef22bac3ed8547da4e07dcc6df0f756513f0fa3245"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 819,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_active_marriage_for_pair",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "person_a_id"
+        },
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "person_b_id"
+        }
+      ],
+      "path": "/marriages/pair/{person_a_id}/{person_b_id}",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:43a44478d410be9d9a4789056adb3ae0d7fd9b322eb3ca52ab1511cef94c7e99"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 834,
+      "methods": [
+        "POST"
+      ],
+      "name": "create_marriage",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "Dict[str, Any]",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "marriage_data"
+        }
+      ],
+      "path": "/marriages",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:a2ee91f8a3913ad316245766d817e2fa2465be68fdfb151e2820c9a48e50077e"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 894,
+      "methods": [
+        "PUT"
+      ],
+      "name": "end_marriage",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "marriage_id"
+        },
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "Dict[str, Any]",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "marriage_data"
+        }
+      ],
+      "path": "/marriages/{marriage_id}",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:13ce7ede7b62da3cb7b57d6ecb257372f6d4b4663789539e09c210749acf92c9"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 971,
+      "methods": [
+        "PUT"
+      ],
+      "name": "update_marriage_start_date",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "marriage_id"
+        },
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "Dict[str, Any]",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "marriage_data"
+        }
+      ],
+      "path": "/marriages/{marriage_id}/start-date",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:0b8e45a32f3337169389f46764dea2df7fef2b07e34c9927c00d34c5fb63f038"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 1033,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_possible_marriage_pairs",
+      "options": {},
+      "parameters": [],
+      "path": "/marriages/possible-pairs",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:82ab5c144006430806d552a14b001364d1ea76cf48ee3d14e5bf7925b6435fe3"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 1097,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_releases",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "str",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "component"
+        }
+      ],
+      "path": "/GetReleases",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:46b1de6b964e599c7b52ab0b04b882f83de83a5d64a2b6ff90cf11345bd89ed2"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 1111,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_possible_mothers_based_on_age",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "date",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "personDateOfBirth"
+        }
+      ],
+      "path": "/GetPossibleMothersBasedOnAge",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:7bacee52e47fa9ee3d16f2943659eb2130e37445750b6bcb47df2e49ad0b92ae"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 1128,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_possible_fathers_based_on_age",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "date",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "personDateOfBirth"
+        }
+      ],
+      "path": "/GetPossibleFathersBasedOnAge",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:4bece9b294c93a98a7d3b1504b9b7c24c61d2e5826f280dd07024ab60ff727ce"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 1145,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_possible_partners_based_on_age",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "date",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "personDateOfBirth"
+        }
+      ],
+      "path": "/GetPossiblePartnersBasedOnAge",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:35209ea8260c1f221e3f79b32db63703d21717ec153c373573b01940f6113f7e"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 1162,
+      "methods": [
+        "POST"
+      ],
+      "name": "update_person",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "Dict[str, Any]",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "person_data"
+        }
+      ],
+      "path": "/UpdatePerson",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:52f4925cd9ffbca4116362fa6fce193b92579f4c9bbe8e95c43ad795b8f68677"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 1235,
+      "methods": [
+        "POST"
+      ],
+      "name": "add_person",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "Dict[str, Any]",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "person_data"
+        }
+      ],
+      "path": "/AddPerson",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:e91eef01a9d0c97d5bedb8f31ca115286b75f5f9440a7a43e4a7a72d7dbe13ec"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 1364,
+      "methods": [
+        "POST"
+      ],
+      "name": "delete_person",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "Dict[str, Any]",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "person_data"
+        }
+      ],
+      "path": "/DeletePerson",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:6a8af352b4caa2608a0626500704213b429ead356b8d1656e081f21e80b055dc"
+    },
+    {
+      "file": "main.py",
+      "isAsync": true,
+      "layer": "MW",
+      "line": 1440,
+      "methods": [
+        "POST"
+      ],
+      "name": "upload_file",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "UploadFile",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "file"
+        },
+        {
+          "annotation": "str",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "scope"
+        },
+        {
+          "annotation": "str",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "entity_id"
+        },
+        {
+          "annotation": "str",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "document_type"
+        },
+        {
+          "annotation": "int",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "year"
+        },
+        {
+          "annotation": "str",
+          "hasDefault": true,
+          "kind": "positional",
+          "name": "person_data"
+        }
+      ],
+      "path": "/api/files/upload",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:9fd22730b1eeb790c75bcccbba6bc67f43eb0a626753aa882861bf14cc3d6dbf"
+    },
+    {
+      "file": "main.py",
+      "isAsync": true,
+      "layer": "MW",
+      "line": 1643,
+      "methods": [
+        "GET"
+      ],
+      "name": "download_file",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "file_id"
+        }
+      ],
+      "path": "/api/files/{file_id}",
+      "returnAnnotation": "FileResponse",
+      "signatureHash": "sha256:59e0d2628296616212fd8ebc5640888ac3c8b806827cef498f822868f1731373"
+    },
+    {
+      "file": "main.py",
+      "isAsync": true,
+      "layer": "MW",
+      "line": 1698,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_file_thumbnail",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "file_id"
+        }
+      ],
+      "path": "/api/files/{file_id}/thumbnail",
+      "returnAnnotation": "StreamingResponse",
+      "signatureHash": "sha256:9cbbb1aec22aff22bb5303787529b99de922384063756ba9f0bbaf99c783bbdb"
+    },
+    {
+      "file": "main.py",
+      "isAsync": true,
+      "layer": "MW",
+      "line": 1772,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_person_files",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "person_id"
+        }
+      ],
+      "path": "/api/person/{person_id}/files",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:8a0783602e4b3c5554615e83654071805ce6001db4d2bc19e917dcfe58507450"
+    },
+    {
+      "file": "main.py",
+      "isAsync": true,
+      "layer": "MW",
+      "line": 1811,
+      "methods": [
+        "GET"
+      ],
+      "name": "get_family_files",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "father_id"
+        },
+        {
+          "annotation": "int",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "mother_id"
+        }
+      ],
+      "path": "/api/family/{father_id}/{mother_id}/files",
+      "returnAnnotation": "List[Dict[str, Any]]",
+      "signatureHash": "sha256:39794d51f445370588da7bae10491fdcf844e2f4e18800ee17b149e183c75513"
+    }
+  ],
+  "generatedAt": "2026-09-10T17:16:12Z",
+  "sourceCommit": "31a4f43be5fec82dff98fbf16beb9b2a748ddb8b",
+  "version": "1.0.0"
+}
