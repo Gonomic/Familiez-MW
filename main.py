@@ -80,6 +80,8 @@ PUBLIC_PATHS = {
     "/pingDB",
 }
 
+STACK_MANIFEST_PATH = os.getenv("STACK_MANIFEST_PATH", "").strip()
+
 # Initialize database engine once at startup
 engine = create_engine(
     DATABASE_URL,
@@ -175,6 +177,19 @@ def _extract_proc_result(results: List[Any], operation_name: str) -> Dict[str, A
 
     first_row = results[0]
     return first_row._asdict() if hasattr(first_row, "_asdict") else dict(first_row)
+
+
+def _load_stack_manifest() -> Optional[Dict[str, Any]]:
+    """Load the optional generated stack manifest without exposing file contents as a path."""
+    if not STACK_MANIFEST_PATH:
+        return None
+    try:
+        with Path(STACK_MANIFEST_PATH).open(encoding="utf-8") as manifest_file:
+            manifest = json.load(manifest_file)
+        return manifest if isinstance(manifest, dict) else None
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Unable to load stack manifest: %s", exc)
+        return None
 
 
 def _map_marriage_result_to_http(result_code: Any) -> int:
@@ -655,6 +670,31 @@ def ping_db(timestampFE: datetime) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error pinging database: {e}")
         raise HTTPException(status_code=500, detail="Database connection failed")
+
+@app.get("/capabilities")
+def get_capabilities() -> Dict[str, Any]:
+    """Return the registry capability graph and the latest optional stack manifest."""
+    try:
+        with engine.connect() as connection:
+            result_proxy = connection.execute(text("call GetFunctionCapabilities()"))
+            result = _extract_proc_result(result_proxy.fetchall(), "GetFunctionCapabilities")
+    except Exception as exc:
+        logger.exception("Capabilities registry lookup failed")
+        raise HTTPException(status_code=500, detail="Capabilities registry lookup failed") from exc
+
+    if result.get("CompletedOk") not in (0, None):
+        raise HTTPException(status_code=500, detail=result.get("ErrorMessage") or "Capabilities lookup failed")
+
+    capabilities = result.get("Capabilities", {"functions": [], "dependencies": []})
+    if isinstance(capabilities, str):
+        try:
+            capabilities = json.loads(capabilities)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=500, detail="Capabilities result was invalid JSON") from exc
+    if not isinstance(capabilities, dict):
+        raise HTTPException(status_code=500, detail="Capabilities result was not an object")
+
+    return {"capabilities": capabilities, "stackManifest": _load_stack_manifest()}
 
 @app.get("/GetPersonsLike")
 def get_persons_like(
