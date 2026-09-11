@@ -75,7 +75,6 @@ PUBLIC_PATHS = {
     "/auth/discovery",
     "/auth/logout",      # NEW: Allow logout without token
     "/auth/keepalive",   # NEW: Allow session keepalive without token (uses session cookie)
-    "/GetReleases",
     "/pingAPI",
     "/pingDB",
 }
@@ -301,37 +300,6 @@ def _normalize_preferences_row(row_dict: Dict[str, Any], username_fallback: str)
         "auto_show_tree": bool(row_dict.get("auto_show_tree", 0)),
         "last_added_person_id": row_dict.get("last_added_person_id"),
     }
-
-def fetch_releases(component: str) -> List[Dict[str, Any]]:
-    if component not in {"fe", "mw", "be"}:
-        raise HTTPException(status_code=400, detail="Invalid component. Use fe, mw, or be.")
-
-    with engine.connect() as connection:
-        rows = connection.execute(
-            text("call GetReleasesByComponent(:componentIn)"),
-            {"componentIn": component}
-        ).fetchall()
-
-    releases: Dict[int, Dict[str, Any]] = {}
-    for row in rows:
-        release_id = row.ReleaseID
-        if release_id not in releases:
-            releases[release_id] = {
-                "ReleaseID": release_id,
-                "ReleaseNumber": row.ReleaseNumber,
-                "ReleaseDate": row.ReleaseDate,
-                "Description": row.Description,
-                "Component": component,
-                "Changes": [],
-            }
-        if row.ChangeID is not None:
-            releases[release_id]["Changes"].append({
-                "ChangeID": row.ChangeID,
-                "ChangeDescription": row.ChangeDescription,
-                "ChangeType": row.ChangeType,
-            })
-
-    return list(releases.values())
 
 app = FastAPI()
 
@@ -1144,20 +1112,6 @@ def get_possible_marriage_pairs() -> List[Dict[str, Any]]:
             ]
     except Exception as e:
         logger.error(f"Error in get_possible_marriage_pairs: {e}")
-        raise HTTPException(status_code=500, detail="Query failed")
-
-
-@app.get("/GetReleases")
-def get_releases(
-    component: str = Query(..., description="Component to fetch releases for: fe, mw, be")
-) -> List[Dict[str, Any]]:
-    try:
-        normalized_component = component.strip().lower()
-        return fetch_releases(normalized_component)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in get_releases: {e}")
         raise HTTPException(status_code=500, detail="Query failed")
 
 

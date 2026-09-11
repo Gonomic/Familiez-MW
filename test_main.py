@@ -5,7 +5,7 @@ from datetime import datetime, date
 from fastapi.testclient import TestClient
 from pathlib import Path
 
-from main import app, format_result, fetch_releases
+from main import app, format_result
 
 
 # Create test client
@@ -590,52 +590,6 @@ class TestGetPossibleBasedOnAgeEndpoints:
         call_args = mock_connection.execute.call_args
         assert "getPossiblePartnersBasedOnAge" in str(call_args[0][0])
         assert call_args[0][1]["personAgeIn"] == date(1990, 1, 1)
-
-
-class TestFetchReleases:
-    """Test suite for fetch_releases helper."""
-
-    @patch('main.engine')
-    def test_fetch_releases_uses_sproc_and_groups_changes(self, mock_engine):
-        """fetch_releases should call GetReleasesByComponent and preserve grouped response shape."""
-        mock_connection = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_connection
-
-        row1 = Mock()
-        row1.ReleaseID = 10
-        row1.ReleaseNumber = '0.9.8'
-        row1.ReleaseDate = '2026-04-05 10:00:00'
-        row1.Description = 'desc'
-        row1.ChangeID = 100
-        row1.ChangeDescription = 'change 1'
-        row1.ChangeType = 'feature'
-
-        row2 = Mock()
-        row2.ReleaseID = 10
-        row2.ReleaseNumber = '0.9.8'
-        row2.ReleaseDate = '2026-04-05 10:00:00'
-        row2.Description = 'desc'
-        row2.ChangeID = 101
-        row2.ChangeDescription = 'change 2'
-        row2.ChangeType = 'refactor'
-
-        mock_connection.execute.return_value.fetchall.return_value = [row1, row2]
-
-        result = fetch_releases('mw')
-
-        assert len(result) == 1
-        assert result[0]['ReleaseID'] == 10
-        assert result[0]['Component'] == 'mw'
-        assert len(result[0]['Changes']) == 2
-
-        call_args = mock_connection.execute.call_args
-        assert 'GetReleasesByComponent' in str(call_args[0][0])
-        assert call_args[0][1]['componentIn'] == 'mw'
-
-    def test_fetch_releases_invalid_component(self):
-        """fetch_releases should reject unknown components."""
-        with pytest.raises(Exception):
-            fetch_releases('invalid-component')
 
 
 class TestFileReadEndpoints:
