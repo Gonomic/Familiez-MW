@@ -696,6 +696,20 @@ def get_capabilities() -> Dict[str, Any]:
 
     return {"capabilities": capabilities, "stackManifest": _load_stack_manifest()}
 
+@app.get("/versioning-validation-probe")
+def versioning_validation_probe() -> Dict[str, Any]:
+    """Exercise the isolated FE -> MW -> DB versioning validation chain."""
+    try:
+        with engine.connect() as connection:
+            result_proxy = connection.execute(text("call GetVersioningValidationProbe()"))
+            result = result_proxy.fetchone()
+    except Exception as exc:
+        logger.exception("Versioning validation probe failed")
+        raise HTTPException(status_code=500, detail="Versioning validation probe failed") from exc
+    if result is None:
+        raise HTTPException(status_code=500, detail="Versioning validation probe returned no result")
+    return result._asdict() if hasattr(result, "_asdict") else dict(result)
+
 @app.get("/GetPersonsLike")
 def get_persons_like(
     stringToSearchFor: str = Query(..., description="(Part of)Name to search for")
