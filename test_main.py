@@ -69,6 +69,31 @@ class TestRootEndpoint:
         assert response.json()["message"] == "Familiez API"
 
 
+class TestStackBuildEndpoint:
+    """Test the public stack build lookup used by the login screen."""
+
+    @patch('main.engine')
+    def test_returns_active_stack_build_number(self, mock_engine):
+        connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = connection
+        result_proxy = MagicMock()
+        row = Mock()
+        row._asdict.return_value = {
+            "CompletedOk": 0,
+            "Result": 200,
+            "ErrorMessage": None,
+            "StackBuildNumber": 11,
+        }
+        result_proxy.fetchone.return_value = row
+        connection.execute.return_value = result_proxy
+
+        response = client.get("/versioning/stack-build")
+
+        assert response.status_code == 200
+        assert response.json() == {"stackBuildNumber": 11}
+        assert "GetActiveStackBuildNumber" in str(connection.execute.call_args.args[0])
+
+
 class TestPingAPIEndpoint:
     """Test suite for the ping API endpoint."""
 

@@ -77,6 +77,7 @@ PUBLIC_PATHS = {
     "/auth/keepalive",   # NEW: Allow session keepalive without token (uses session cookie)
     "/pingAPI",
     "/pingDB",
+    "/versioning/stack-build",
 }
 
 STACK_MANIFEST_PATH = os.getenv("STACK_MANIFEST_PATH", "").strip()
@@ -679,6 +680,25 @@ def get_capabilities() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Capabilities result was not an object")
 
     return {"capabilities": capabilities, "stackManifest": stack_manifest}
+
+
+@app.get("/versioning/stack-build")
+def get_active_stack_build_number() -> Dict[str, Any]:
+    """Return only the active compatible stack build number for the login screen."""
+    try:
+        with engine.connect() as connection:
+            result_proxy = connection.execute(text("call GetActiveStackBuildNumber()"))
+            result = result_proxy.fetchone()
+    except Exception as exc:
+        logger.exception("Active stack build lookup failed")
+        raise HTTPException(status_code=500, detail="Active stack build lookup failed") from exc
+
+    if result is None:
+        raise HTTPException(status_code=500, detail="Active stack build lookup returned no result")
+    row = result._asdict() if hasattr(result, "_asdict") else dict(result)
+    if row.get("CompletedOk") not in (0, None):
+        raise HTTPException(status_code=500, detail="Active stack build lookup failed")
+    return {"stackBuildNumber": row.get("StackBuildNumber")}
 
 @app.get("/versioning-validation-probe")
 def versioning_validation_probe() -> Dict[str, Any]:
