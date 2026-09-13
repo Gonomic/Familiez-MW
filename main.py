@@ -191,6 +191,21 @@ def _load_stack_manifest() -> Optional[Dict[str, Any]]:
         return None
 
 
+def _load_active_stack_manifest(connection: Any) -> Optional[Dict[str, Any]]:
+    """Load the active compatible stack manifest from the versioning registry."""
+    result_proxy = connection.execute(text("call GetActiveStackManifest()"))
+    result = result_proxy.fetchone()
+    if result is None:
+        return None
+    row = result._asdict() if hasattr(result, "_asdict") else dict(result)
+    if row.get("CompletedOk") not in (0, None):
+        raise RuntimeError(row.get("ErrorMessage") or "Active stack manifest lookup failed")
+    manifest = row.get("StackManifest")
+    if isinstance(manifest, str):
+        manifest = json.loads(manifest)
+    return manifest if isinstance(manifest, dict) and manifest else None
+
+
 def _map_marriage_result_to_http(result_code: Any) -> int:
     """Map known business result codes from Add/EndMarriage sprocs to HTTP status codes."""
     try:
@@ -646,6 +661,7 @@ def get_capabilities() -> Dict[str, Any]:
         with engine.connect() as connection:
             result_proxy = connection.execute(text("call GetFunctionCapabilities()"))
             result = _extract_proc_result(result_proxy.fetchall(), "GetFunctionCapabilities")
+            stack_manifest = _load_active_stack_manifest(connection)
     except Exception as exc:
         logger.exception("Capabilities registry lookup failed")
         raise HTTPException(status_code=500, detail="Capabilities registry lookup failed") from exc
@@ -662,7 +678,7 @@ def get_capabilities() -> Dict[str, Any]:
     if not isinstance(capabilities, dict):
         raise HTTPException(status_code=500, detail="Capabilities result was not an object")
 
-    return {"capabilities": capabilities, "stackManifest": _load_stack_manifest()}
+    return {"capabilities": capabilities, "stackManifest": stack_manifest}
 
 @app.get("/versioning-validation-probe")
 def versioning_validation_probe() -> Dict[str, Any]:
