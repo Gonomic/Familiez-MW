@@ -75,10 +75,12 @@ PUBLIC_PATHS = {
     "/auth/discovery",
     "/auth/logout",      # NEW: Allow logout without token
     "/auth/keepalive",   # NEW: Allow session keepalive without token (uses session cookie)
-    "/GetReleases",
     "/pingAPI",
     "/pingDB",
+    "/versioning/stack-build",
 }
+
+STACK_MANIFEST_PATH = os.getenv("STACK_MANIFEST_PATH", "").strip()
 
 # Initialize database engine once at startup
 engine = create_engine(
@@ -175,6 +177,34 @@ def _extract_proc_result(results: List[Any], operation_name: str) -> Dict[str, A
 
     first_row = results[0]
     return first_row._asdict() if hasattr(first_row, "_asdict") else dict(first_row)
+
+
+def _load_stack_manifest() -> Optional[Dict[str, Any]]:
+    """Load the optional generated stack manifest without exposing file contents as a path."""
+    if not STACK_MANIFEST_PATH:
+        return None
+    try:
+        with Path(STACK_MANIFEST_PATH).open(encoding="utf-8") as manifest_file:
+            manifest = json.load(manifest_file)
+        return manifest if isinstance(manifest, dict) else None
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Unable to load stack manifest: %s", exc)
+        return None
+
+
+def _load_active_stack_manifest(connection: Any) -> Optional[Dict[str, Any]]:
+    """Load the active compatible stack manifest from the versioning registry."""
+    result_proxy = connection.execute(text("call GetActiveStackManifest()"))
+    result = result_proxy.fetchone()
+    if result is None:
+        return None
+    row = result._asdict() if hasattr(result, "_asdict") else dict(result)
+    if row.get("CompletedOk") not in (0, None):
+        raise RuntimeError(row.get("ErrorMessage") or "Active stack manifest lookup failed")
+    manifest = row.get("StackManifest")
+    if isinstance(manifest, str):
+        manifest = json.loads(manifest)
+    return manifest if isinstance(manifest, dict) and manifest else None
 
 
 def _map_marriage_result_to_http(result_code: Any) -> int:
@@ -286,37 +316,6 @@ def _normalize_preferences_row(row_dict: Dict[str, Any], username_fallback: str)
         "auto_show_tree": bool(row_dict.get("auto_show_tree", 0)),
         "last_added_person_id": row_dict.get("last_added_person_id"),
     }
-
-def fetch_releases(component: str) -> List[Dict[str, Any]]:
-    if component not in {"fe", "mw", "be"}:
-        raise HTTPException(status_code=400, detail="Invalid component. Use fe, mw, or be.")
-
-    with engine.connect() as connection:
-        rows = connection.execute(
-            text("call GetReleasesByComponent(:componentIn)"),
-            {"componentIn": component}
-        ).fetchall()
-
-    releases: Dict[int, Dict[str, Any]] = {}
-    for row in rows:
-        release_id = row.ReleaseID
-        if release_id not in releases:
-            releases[release_id] = {
-                "ReleaseID": release_id,
-                "ReleaseNumber": row.ReleaseNumber,
-                "ReleaseDate": row.ReleaseDate,
-                "Description": row.Description,
-                "Component": component,
-                "Changes": [],
-            }
-        if row.ChangeID is not None:
-            releases[release_id]["Changes"].append({
-                "ChangeID": row.ChangeID,
-                "ChangeDescription": row.ChangeDescription,
-                "ChangeType": row.ChangeType,
-            })
-
-    return list(releases.values())
 
 app = FastAPI()
 
@@ -655,6 +654,65 @@ def ping_db(timestampFE: datetime) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error pinging database: {e}")
         raise HTTPException(status_code=500, detail="Database connection failed")
+
+@app.get("/capabilities")
+def get_capabilities() -> Dict[str, Any]:
+    """Return the registry capability graph and the latest optional stack manifest."""
+    try:
+        with engine.connect() as connection:
+            result_proxy = connection.execute(text("call GetFunctionCapabilities()"))
+            result = _extract_proc_result(result_proxy.fetchall(), "GetFunctionCapabilities")
+            stack_manifest = _load_active_stack_manifest(connection)
+    except Exception as exc:
+        logger.exception("Capabilities registry lookup failed")
+        raise HTTPException(status_code=500, detail="Capabilities registry lookup failed") from exc
+
+    if result.get("CompletedOk") not in (0, None):
+        raise HTTPException(status_code=500, detail=result.get("ErrorMessage") or "Capabilities lookup failed")
+
+    capabilities = result.get("Capabilities", {"functions": [], "dependencies": []})
+    if isinstance(capabilities, str):
+        try:
+            capabilities = json.loads(capabilities)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=500, detail="Capabilities result was invalid JSON") from exc
+    if not isinstance(capabilities, dict):
+        raise HTTPException(status_code=500, detail="Capabilities result was not an object")
+
+    return {"capabilities": capabilities, "stackManifest": stack_manifest}
+
+
+@app.get("/versioning/stack-build")
+def get_active_stack_build_number() -> Dict[str, Any]:
+    """Return only the active compatible stack build number for the login screen."""
+    try:
+        with engine.connect() as connection:
+            result_proxy = connection.execute(text("call GetActiveStackBuildNumber()"))
+            result = result_proxy.fetchone()
+    except Exception as exc:
+        logger.exception("Active stack build lookup failed")
+        raise HTTPException(status_code=500, detail="Active stack build lookup failed") from exc
+
+    if result is None:
+        raise HTTPException(status_code=500, detail="Active stack build lookup returned no result")
+    row = result._asdict() if hasattr(result, "_asdict") else dict(result)
+    if row.get("CompletedOk") not in (0, None):
+        raise HTTPException(status_code=500, detail="Active stack build lookup failed")
+    return {"stackBuildNumber": row.get("StackBuildNumber")}
+
+@app.get("/versioning-validation-probe")
+def versioning_validation_probe() -> Dict[str, Any]:
+    """Exercise the isolated FE -> MW -> DB versioning validation chain."""
+    try:
+        with engine.connect() as connection:
+            result_proxy = connection.execute(text("call GetVersioningValidationProbe()"))
+            result = result_proxy.fetchone()
+    except Exception as exc:
+        logger.exception("Versioning validation probe failed")
+        raise HTTPException(status_code=500, detail="Versioning validation probe failed") from exc
+    if result is None:
+        raise HTTPException(status_code=500, detail="Versioning validation probe returned no result")
+    return result._asdict() if hasattr(result, "_asdict") else dict(result)
 
 @app.get("/GetPersonsLike")
 def get_persons_like(
@@ -1090,20 +1148,6 @@ def get_possible_marriage_pairs() -> List[Dict[str, Any]]:
             ]
     except Exception as e:
         logger.error(f"Error in get_possible_marriage_pairs: {e}")
-        raise HTTPException(status_code=500, detail="Query failed")
-
-
-@app.get("/GetReleases")
-def get_releases(
-    component: str = Query(..., description="Component to fetch releases for: fe, mw, be")
-) -> List[Dict[str, Any]]:
-    try:
-        normalized_component = component.strip().lower()
-        return fetch_releases(normalized_component)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in get_releases: {e}")
         raise HTTPException(status_code=500, detail="Query failed")
 
 
