@@ -48,6 +48,8 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
+.sonar/
+.scannerwork/
 
 # OS
 Thumbs.db
