@@ -137,6 +137,17 @@ def _parse_required_date(value: Any, field_name: str) -> date:
         raise HTTPException(status_code=400, detail=f"{field_name} moet formaat YYYY-MM-DD hebben")
 
 
+def _parse_optional_date(value: Any, field_name: str) -> Optional[date]:
+    """Parse optional YYYY-MM-DD values, normalizing empty strings to None."""
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return None
+    return _parse_required_date(value, field_name)
+
+
+def _payload_value(payload: Dict[str, Any], camel_name: str, database_name: str) -> Any:
+    return payload.get(camel_name, payload.get(database_name))
+
+
 def _parse_optional_text(value: Any, field_name: str, max_length: int = 255) -> Optional[str]:
     """Normalize optional text fields: trim, empty-to-None, and max length validation."""
     if value is None:
@@ -153,6 +164,63 @@ def _parse_optional_text(value: Any, field_name: str, max_length: int = 255) -> 
         raise HTTPException(status_code=400, detail=f"{field_name} mag maximaal {max_length} tekens bevatten")
 
     return normalized
+
+
+def _parse_required_text(value: Any, field_name: str, max_length: int) -> str:
+    normalized = _parse_optional_text(value, field_name, max_length)
+    if normalized is None:
+        raise HTTPException(status_code=400, detail=f"{field_name} is verplicht")
+    return normalized
+
+
+def _parse_optional_int(value: Any, field_name: str) -> Optional[int]:
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return None
+    return _parse_required_int(value, field_name)
+
+
+def _parse_parent_creation_payload(parent_data: Dict[str, Any]) -> Dict[str, Any]:
+    gender_value = _payload_value(parent_data, "gender", "Geslacht")
+    try:
+        gender = int(gender_value)
+    except (TypeError, ValueError):
+        gender = -1
+    if isinstance(gender_value, bool) or (isinstance(gender_value, float) and not gender_value.is_integer()):
+        gender = -1
+    if gender not in (0, 1):
+        raise HTTPException(status_code=400, detail="gender moet 0 (vrouwelijk) of 1 (mannelijk) zijn")
+
+    return {
+        "kindId": _parse_required_int(_payload_value(parent_data, "kindId", "KindId"), "kindId"),
+        "gender": gender,
+        "givenName": _parse_required_text(
+            _payload_value(parent_data, "givenName", "Voornaam"), "givenName", 25
+        ),
+        "familyName": _parse_required_text(
+            _payload_value(parent_data, "familyName", "Achternaam"), "familyName", 50
+        ),
+        "birthDate": _parse_required_date(
+            _payload_value(parent_data, "birthDate", "Geboortedatum"), "birthDate"
+        ),
+        "birthPlace": _parse_required_text(
+            _payload_value(parent_data, "birthPlace", "Geboorteplaats"), "birthPlace", 50
+        ),
+        "deathDate": _parse_optional_date(
+            _payload_value(parent_data, "deathDate", "Overlijdensdatum"), "deathDate"
+        ),
+        "deathPlace": _parse_optional_text(
+            _payload_value(parent_data, "deathPlace", "Overlijdensplaats"), "deathPlace", 80
+        ),
+        "partnerId": _parse_optional_int(
+            _payload_value(parent_data, "partnerId", "PartnerId"), "partnerId"
+        ),
+        "marriageDate": _parse_optional_date(
+            _payload_value(parent_data, "marriageDate", "Huwelijksdatum"), "marriageDate"
+        ),
+        "marriagePlace": _parse_optional_text(
+            _payload_value(parent_data, "marriagePlace", "Huwelijksplaats"), "marriagePlace", 100
+        ),
+    }
 
 
 def _parse_end_reason(value: Any) -> str:
@@ -1402,6 +1470,56 @@ def add_person(
 
 
 
+
+
+@app.post("/AddNewParentToChild")
+def add_new_parent_to_child(
+    request: Request,
+    parent_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    require_admin_role(request)
+    parameters = _parse_parent_creation_payload(parent_data)
+
+    try:
+        with engine.connect() as connection:
+            results_proxy = connection.execute(
+                text("""call AddNewParentToChild(
+                    :kindId,
+                    :gender,
+                    :givenName,
+                    :familyName,
+                    :birthDate,
+                    :birthPlace,
+                    :deathDate,
+                    :deathPlace,
+                    :partnerId,
+                    :marriageDate,
+                    :marriagePlace
+                )"""),
+                parameters,
+            )
+            result_dict = _extract_proc_result(results_proxy.fetchall(), "AddNewParentToChild")
+
+            if result_dict.get("CompletedOk") == 0:
+                connection.commit()
+                response = {
+                    "success": True,
+                    "personId": result_dict.get("NewPersonID"),
+                }
+                if result_dict.get("ErrorMessage"):
+                    response["warning"] = result_dict["ErrorMessage"]
+                return response
+
+            connection.rollback()
+            raise HTTPException(
+                status_code=_map_marriage_result_to_http(result_dict.get("Result")),
+                detail=result_dict.get("ErrorMessage") or "Vader/moeder toevoegen is mislukt",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error in add_new_parent_to_child")
+        raise HTTPException(status_code=500, detail="Vader/moeder toevoegen is mislukt")
 
 
 @app.post("/DeletePerson")

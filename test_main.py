@@ -887,6 +887,221 @@ class TestPersonWriteEndpoints:
         assert call_args[0][1]['deathStatus'] == 0
 
 
+class TestAddNewParentToChildEndpoint:
+    def _valid_payload(self):
+        return {
+            "kindId": 11,
+            "gender": 1,
+            "givenName": "Jan",
+            "familyName": "Jansen",
+            "birthDate": "1900-01-01",
+            "birthPlace": "Utrecht",
+            "deathDate": "",
+            "deathPlace": None,
+            "partnerId": None,
+            "marriageDate": None,
+            "marriagePlace": "",
+        }
+
+    @patch("main.require_admin_role")
+    @patch("main.verify_sso_token")
+    @patch("main.engine")
+    def test_add_parent_calls_sproc_and_returns_person_id(self, mock_engine, mock_verify_sso_token, mock_require_admin_role):
+        mock_require_admin_role.return_value = None
+        mock_verify_sso_token.return_value = {"sub": "admin-user"}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        result_row = Mock()
+        result_row._asdict.return_value = {
+            "CompletedOk": 0,
+            "Result": 200,
+            "NewPersonID": 321,
+            "ErrorMessage": None,
+        }
+        mock_connection.execute.return_value.fetchall.return_value = [result_row]
+
+        response = client.post(
+            "/AddNewParentToChild",
+            headers={"Authorization": "Bearer valid-test-token"},
+            json=self._valid_payload(),
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"success": True, "personId": 321}
+        mock_connection.commit.assert_called_once()
+        call_args = mock_connection.execute.call_args
+        assert "AddNewParentToChild" in str(call_args.args[0])
+        assert call_args.args[1] == {
+            "kindId": 11,
+            "gender": 1,
+            "givenName": "Jan",
+            "familyName": "Jansen",
+            "birthDate": date(1900, 1, 1),
+            "birthPlace": "Utrecht",
+            "deathDate": None,
+            "deathPlace": None,
+            "partnerId": None,
+            "marriageDate": None,
+            "marriagePlace": None,
+        }
+
+    @patch("main.require_admin_role")
+    @patch("main.verify_sso_token")
+    @patch("main.engine")
+    def test_partner_conflict_is_success_with_warning(self, mock_engine, mock_verify_sso_token, mock_require_admin_role):
+        mock_require_admin_role.return_value = None
+        mock_verify_sso_token.return_value = {"sub": "admin-user"}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        result_row = Mock()
+        result_row._asdict.return_value = {
+            "CompletedOk": 0,
+            "Result": 200,
+            "NewPersonID": 321,
+            "ErrorMessage": "Het opgegeven PartnerId heeft al een partnerrelatie.",
+        }
+        mock_connection.execute.return_value.fetchall.return_value = [result_row]
+
+        response = client.post(
+            "/AddNewParentToChild",
+            headers={"Authorization": "Bearer valid-test-token"},
+            json={**self._valid_payload(), "partnerId": 22},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "success": True,
+            "personId": 321,
+            "warning": "Het opgegeven PartnerId heeft al een partnerrelatie.",
+        }
+        mock_connection.commit.assert_called_once()
+
+    @patch("main.require_admin_role")
+    @patch("main.verify_sso_token")
+    @patch("main.engine")
+    def test_accepts_be_field_names_and_optional_values(
+        self, mock_engine, mock_verify_sso_token, mock_require_admin_role
+    ):
+        mock_require_admin_role.return_value = None
+        mock_verify_sso_token.return_value = {"sub": "admin-user"}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        result_row = Mock()
+        result_row._asdict.return_value = {
+            "CompletedOk": 0,
+            "Result": 200,
+            "NewPersonID": 322,
+            "ErrorMessage": None,
+        }
+        mock_connection.execute.return_value.fetchall.return_value = [result_row]
+
+        response = client.post(
+            "/AddNewParentToChild",
+            headers={"Authorization": "Bearer valid-test-token"},
+            json={
+                "KindId": 11,
+                "Geslacht": 0,
+                "Voornaam": "Anna",
+                "Achternaam": "Jansen",
+                "Geboortedatum": "1901-02-03",
+                "Geboorteplaats": "Leiden",
+                "Overlijdensdatum": "1980-04-05",
+                "Overlijdensplaats": "Delft",
+                "PartnerId": 22,
+                "Huwelijksdatum": "1920-06-07",
+                "Huwelijksplaats": "Rotterdam",
+            },
+        )
+
+        assert response.status_code == 200
+        parameters = mock_connection.execute.call_args.args[1]
+        assert parameters == {
+            "kindId": 11,
+            "gender": 0,
+            "givenName": "Anna",
+            "familyName": "Jansen",
+            "birthDate": date(1901, 2, 3),
+            "birthPlace": "Leiden",
+            "deathDate": date(1980, 4, 5),
+            "deathPlace": "Delft",
+            "partnerId": 22,
+            "marriageDate": date(1920, 6, 7),
+            "marriagePlace": "Rotterdam",
+        }
+
+    @patch("main.require_admin_role")
+    @patch("main.verify_sso_token")
+    @patch("main.engine")
+    def test_duplicate_parent_maps_to_conflict(self, mock_engine, mock_verify_sso_token, mock_require_admin_role):
+        mock_require_admin_role.return_value = None
+        mock_verify_sso_token.return_value = {"sub": "admin-user"}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+
+        result_row = Mock()
+        result_row._asdict.return_value = {
+            "CompletedOk": 1,
+            "Result": 409,
+            "NewPersonID": None,
+            "ErrorMessage": "De toe te voegen Vader bestaat al als persoon in de database.",
+        }
+        mock_connection.execute.return_value.fetchall.return_value = [result_row]
+
+        response = client.post(
+            "/AddNewParentToChild",
+            headers={"Authorization": "Bearer valid-test-token"},
+            json=self._valid_payload(),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == result_row._asdict.return_value["ErrorMessage"]
+        mock_connection.rollback.assert_called_once()
+        mock_connection.commit.assert_not_called()
+
+    @patch("main.require_admin_role")
+    @patch("main.verify_sso_token")
+    @patch("main.engine")
+    def test_invalid_gender_is_rejected_before_database_call(
+        self, mock_engine, mock_verify_sso_token, mock_require_admin_role
+    ):
+        mock_require_admin_role.return_value = None
+        mock_verify_sso_token.return_value = {"sub": "admin-user"}
+
+        response = client.post(
+            "/AddNewParentToChild",
+            headers={"Authorization": "Bearer valid-test-token"},
+            json={**self._valid_payload(), "gender": 2},
+        )
+
+        assert response.status_code == 400
+        mock_engine.connect.assert_not_called()
+
+    @patch("main.require_admin_role")
+    @patch("main.verify_sso_token")
+    @patch("main.engine")
+    def test_database_error_returns_generic_server_error(
+        self, mock_engine, mock_verify_sso_token, mock_require_admin_role
+    ):
+        mock_require_admin_role.return_value = None
+        mock_verify_sso_token.return_value = {"sub": "admin-user"}
+        mock_connection = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_connection
+        mock_connection.execute.side_effect = RuntimeError("database details must not leak")
+
+        response = client.post(
+            "/AddNewParentToChild",
+            headers={"Authorization": "Bearer valid-test-token"},
+            json=self._valid_payload(),
+        )
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Vader/moeder toevoegen is mislukt"}
+        assert "database details must not leak" not in response.text
+
+
 class TestUserPreferencesEndpoints:
     """Test suite for /user/my-preferences endpoints."""
 
