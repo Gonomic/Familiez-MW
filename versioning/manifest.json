@@ -1,12 +1,12 @@
 {
   "component": "MW",
-  "dockerImageTag": "familiez-mw:5.0.0",
+  "dockerImageTag": "familiez-mw:6.0.0",
   "functions": [
     {
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 394,
+      "line": 462,
       "methods": [
         "GET"
       ],
@@ -21,7 +21,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 399,
+      "line": 467,
       "methods": [
         "GET"
       ],
@@ -36,7 +36,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 418,
+      "line": 486,
       "methods": [
         "POST"
       ],
@@ -58,7 +58,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 462,
+      "line": 530,
       "methods": [
         "GET"
       ],
@@ -80,7 +80,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 476,
+      "line": 544,
       "methods": [
         "GET"
       ],
@@ -102,7 +102,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 501,
+      "line": 569,
       "methods": [
         "PUT"
       ],
@@ -130,7 +130,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 592,
+      "line": 660,
       "methods": [
         "POST"
       ],
@@ -152,7 +152,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 606,
+      "line": 674,
       "methods": [
         "POST"
       ],
@@ -174,7 +174,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 623,
+      "line": 691,
       "methods": [
         "GET"
       ],
@@ -196,7 +196,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 632,
+      "line": 700,
       "methods": [
         "GET"
       ],
@@ -218,7 +218,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 640,
+      "line": 708,
       "methods": [
         "GET"
       ],
@@ -240,7 +240,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 659,
+      "line": 727,
       "methods": [
         "GET"
       ],
@@ -255,7 +255,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 686,
+      "line": 754,
       "methods": [
         "GET"
       ],
@@ -270,7 +270,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 704,
+      "line": 772,
       "methods": [
         "GET"
       ],
@@ -285,7 +285,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 718,
+      "line": 786,
       "methods": [
         "GET"
       ],
@@ -307,7 +307,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 735,
+      "line": 803,
       "methods": [
         "GET"
       ],
@@ -329,7 +329,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 753,
+      "line": 821,
       "methods": [
         "GET"
       ],
@@ -351,7 +351,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 771,
+      "line": 839,
       "methods": [
         "GET"
       ],
@@ -373,7 +373,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 789,
+      "line": 857,
       "methods": [
         "GET"
       ],
@@ -395,7 +395,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 808,
+      "line": 876,
       "methods": [
         "GET"
       ],
@@ -417,7 +417,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 827,
+      "line": 895,
       "methods": [
         "GET"
       ],
@@ -439,7 +439,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 845,
+      "line": 913,
       "methods": [
         "GET"
       ],
@@ -461,7 +461,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 861,
+      "line": 929,
       "methods": [
         "GET"
       ],
@@ -483,7 +483,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 877,
+      "line": 945,
       "methods": [
         "GET"
       ],
@@ -511,7 +511,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 892,
+      "line": 960,
       "methods": [
         "POST"
       ],
@@ -539,7 +539,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 952,
+      "line": 1020,
       "methods": [
         "PUT"
       ],
@@ -573,7 +573,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 1029,
+      "line": 1097,
       "methods": [
         "PUT"
       ],
@@ -607,7 +607,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 1091,
+      "line": 1159,
       "methods": [
         "GET"
       ],
@@ -622,7 +622,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 1155,
+      "line": 1223,
       "methods": [
         "GET"
       ],
@@ -644,7 +644,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 1172,
+      "line": 1240,
       "methods": [
         "GET"
       ],
@@ -666,7 +666,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 1189,
+      "line": 1257,
       "methods": [
         "GET"
       ],
@@ -688,7 +688,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 1206,
+      "line": 1274,
       "methods": [
         "POST"
       ],
@@ -716,7 +716,7 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 1279,
+      "line": 1347,
       "methods": [
         "POST"
       ],
@@ -744,7 +744,35 @@
       "file": "main.py",
       "isAsync": false,
       "layer": "MW",
-      "line": 1408,
+      "line": 1476,
+      "methods": [
+        "POST"
+      ],
+      "name": "add_new_parent_to_child",
+      "options": {},
+      "parameters": [
+        {
+          "annotation": "Request",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "request"
+        },
+        {
+          "annotation": "Dict[str, Any]",
+          "hasDefault": false,
+          "kind": "positional",
+          "name": "parent_data"
+        }
+      ],
+      "path": "/AddNewParentToChild",
+      "returnAnnotation": "Dict[str, Any]",
+      "signatureHash": "sha256:1e74a16b6ebad149a27f6d3c58adcd28fde6496b6010b337c98675a29decd949"
+    },
+    {
+      "file": "main.py",
+      "isAsync": false,
+      "layer": "MW",
+      "line": 1526,
       "methods": [
         "POST"
       ],
@@ -772,7 +800,7 @@
       "file": "main.py",
       "isAsync": true,
       "layer": "MW",
-      "line": 1484,
+      "line": 1602,
       "methods": [
         "POST"
       ],
@@ -830,7 +858,7 @@
       "file": "main.py",
       "isAsync": true,
       "layer": "MW",
-      "line": 1687,
+      "line": 1805,
       "methods": [
         "GET"
       ],
@@ -858,7 +886,7 @@
       "file": "main.py",
       "isAsync": true,
       "layer": "MW",
-      "line": 1742,
+      "line": 1860,
       "methods": [
         "GET"
       ],
@@ -886,7 +914,7 @@
       "file": "main.py",
       "isAsync": true,
       "layer": "MW",
-      "line": 1816,
+      "line": 1934,
       "methods": [
         "GET"
       ],
@@ -914,7 +942,7 @@
       "file": "main.py",
       "isAsync": true,
       "layer": "MW",
-      "line": 1855,
+      "line": 1973,
       "methods": [
         "GET"
       ],
@@ -945,7 +973,7 @@
       "signatureHash": "sha256:39794d51f445370588da7bae10491fdcf844e2f4e18800ee17b149e183c75513"
     }
   ],
-  "generatedAt": "2026-09-14T20:56:17Z",
-  "sourceCommit": "6330305a6b346d7c5d304a8d5039e7561cd4eecb",
-  "version": "5.0.0"
+  "generatedAt": "2026-10-10T09:14:57Z",
+  "sourceCommit": "4555fde13a260f5054b80006fdd651c210614937",
+  "version": "6.0.0"
 }
