@@ -26,9 +26,9 @@ wheels/
 # Virtual environments
 .venv
 .env
-.env.local
-.env.prod
-.env.*.prod
+.env.*
+*.env
+*.env.*
 
 # IDE
 .vscode/
