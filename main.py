@@ -144,6 +144,27 @@ def _parse_optional_date(value: Any, field_name: str) -> Optional[date]:
     return _parse_required_date(value, field_name)
 
 
+def _parse_date_status(value: Any, field_name: str, date_value: Any, default: Optional[int]) -> Optional[int]:
+    """Validate exact/estimated status values and keep empty dates unclassified."""
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        status = default
+    else:
+        if isinstance(value, bool):
+            raise HTTPException(status_code=400, detail=f"{field_name} moet 1 (exact) of 2 (geschat) zijn")
+        status = _parse_required_int(value, field_name)
+
+    if date_value is None:
+        if status in (1, 2):
+            raise HTTPException(status_code=400, detail=f"{field_name} vereist een ingevulde datum")
+        if status not in (None, 3):
+            raise HTTPException(status_code=400, detail=f"{field_name} moet 3 (onbekend) zijn bij een lege datum")
+        return status
+
+    if status not in (1, 2):
+        raise HTTPException(status_code=400, detail=f"{field_name} moet 1 (exact) of 2 (geschat) zijn")
+    return status
+
+
 def _payload_value(payload: Dict[str, Any], camel_name: str, database_name: str) -> Any:
     return payload.get(camel_name, payload.get(database_name))
 
@@ -190,6 +211,16 @@ def _parse_parent_creation_payload(parent_data: Dict[str, Any]) -> Dict[str, Any
     if gender not in (0, 1):
         raise HTTPException(status_code=400, detail="gender moet 0 (vrouwelijk) of 1 (mannelijk) zijn")
 
+    birth_date = _parse_required_date(
+        _payload_value(parent_data, "birthDate", "Geboortedatum"), "birthDate"
+    )
+    death_date = _parse_optional_date(
+        _payload_value(parent_data, "deathDate", "Overlijdensdatum"), "deathDate"
+    )
+    marriage_date = _parse_optional_date(
+        _payload_value(parent_data, "marriageDate", "Huwelijksdatum"), "marriageDate"
+    )
+
     return {
         "kindId": _parse_required_int(_payload_value(parent_data, "kindId", "KindId"), "kindId"),
         "gender": gender,
@@ -199,14 +230,22 @@ def _parse_parent_creation_payload(parent_data: Dict[str, Any]) -> Dict[str, Any
         "familyName": _parse_required_text(
             _payload_value(parent_data, "familyName", "Achternaam"), "familyName", 50
         ),
-        "birthDate": _parse_required_date(
-            _payload_value(parent_data, "birthDate", "Geboortedatum"), "birthDate"
+        "birthDate": birth_date,
+        "birthDateStatus": _parse_date_status(
+            _payload_value(parent_data, "birthDateStatus", "GeboortedatumStatus"),
+            "birthDateStatus",
+            birth_date,
+            1,
         ),
         "birthPlace": _parse_required_text(
             _payload_value(parent_data, "birthPlace", "Geboorteplaats"), "birthPlace", 50
         ),
-        "deathDate": _parse_optional_date(
-            _payload_value(parent_data, "deathDate", "Overlijdensdatum"), "deathDate"
+        "deathDate": death_date,
+        "deathDateStatus": _parse_date_status(
+            _payload_value(parent_data, "deathDateStatus", "OverlijdensdatumStatus"),
+            "deathDateStatus",
+            death_date,
+            1 if death_date is not None else None,
         ),
         "deathPlace": _parse_optional_text(
             _payload_value(parent_data, "deathPlace", "Overlijdensplaats"), "deathPlace", 80
@@ -214,8 +253,12 @@ def _parse_parent_creation_payload(parent_data: Dict[str, Any]) -> Dict[str, Any
         "partnerId": _parse_optional_int(
             _payload_value(parent_data, "partnerId", "PartnerId"), "partnerId"
         ),
-        "marriageDate": _parse_optional_date(
-            _payload_value(parent_data, "marriageDate", "Huwelijksdatum"), "marriageDate"
+        "marriageDate": marriage_date,
+        "marriageDateStatus": _parse_date_status(
+            _payload_value(parent_data, "marriageDateStatus", "HuwelijksdatumStatus"),
+            "marriageDateStatus",
+            marriage_date,
+            1 if marriage_date is not None else None,
         ),
         "marriagePlace": _parse_optional_text(
             _payload_value(parent_data, "marriagePlace", "Huwelijksplaats"), "marriagePlace", 100
@@ -975,6 +1018,12 @@ def create_marriage(
         marriage_data.get("startDate", marriage_data.get("StartDate")),
         "startDate"
     )
+    start_date_status = _parse_date_status(
+        marriage_data.get("startDateStatus", marriage_data.get("StartDateStatus")),
+        "startDateStatus",
+        start_date,
+        1,
+    )
     marriage_place = _parse_optional_text(
         marriage_data.get("marriagePlace", marriage_data.get("MarriagePlace")),
         "marriagePlace",
@@ -987,11 +1036,12 @@ def create_marriage(
     try:
         with engine.connect() as connection:
             results_proxy = connection.execute(
-                text("call AddMarriage_v2(:personAId, :personBId, :startDate, :marriagePlace)"),
+                text("call AddMarriage_v3(:personAId, :personBId, :startDate, :startDateStatus, :marriagePlace)"),
                 {
                     "personAId": person_a_id,
                     "personBId": person_b_id,
                     "startDate": start_date,
+                    "startDateStatus": start_date_status,
                     "marriagePlace": marriage_place,
                 },
             )
@@ -1036,6 +1086,12 @@ def end_marriage(
         marriage_data.get("endDate", marriage_data.get("EndDate")),
         "endDate"
     )
+    end_date_status = _parse_date_status(
+        marriage_data.get("endDateStatus", marriage_data.get("EndDateStatus")),
+        "endDateStatus",
+        end_date,
+        1,
+    )
     end_reason = _parse_end_reason(
         marriage_data.get("endReason", marriage_data.get("EndReason"))
     )
@@ -1067,11 +1123,12 @@ def end_marriage(
                 )
 
             end_results_proxy = connection.execute(
-                text("call EndMarriage(:personAId, :personBId, :endDate, :endReason)"),
+                text("call EndMarriage_v2(:personAId, :personBId, :endDate, :endDateStatus, :endReason)"),
                 {
                     "personAId": person_a_id,
                     "personBId": person_b_id,
                     "endDate": end_date,
+                    "endDateStatus": end_date_status,
                     "endReason": end_reason,
                 },
             )
@@ -1113,6 +1170,12 @@ def update_marriage_start_date(
         marriage_data.get("startDate", marriage_data.get("StartDate")),
         "startDate"
     )
+    start_date_status = _parse_date_status(
+        marriage_data.get("startDateStatus", marriage_data.get("StartDateStatus")),
+        "startDateStatus",
+        start_date,
+        1,
+    )
     marriage_place = _parse_optional_text(
         marriage_data.get("marriagePlace", marriage_data.get("MarriagePlace")),
         "marriagePlace",
@@ -1125,12 +1188,13 @@ def update_marriage_start_date(
     try:
         with engine.connect() as connection:
             update_results_proxy = connection.execute(
-                text("call UpdateMarriageStartDate_v2(:marriageId, :personAId, :personBId, :startDate, :marriagePlace)"),
+                text("call UpdateMarriageStartDate_v3(:marriageId, :personAId, :personBId, :startDate, :startDateStatus, :marriagePlace)"),
                 {
                     "marriageId": marriage_id,
                     "personAId": person_a_id,
                     "personBId": person_b_id,
                     "startDate": start_date,
+                    "startDateStatus": start_date_status,
                     "marriagePlace": marriage_place,
                 },
             )
@@ -1281,8 +1345,24 @@ def update_person(
     try:
         with engine.connect() as connection:
             person_id = person_data.get('personId')
-            birth_status = person_data.get('PersonDateOfBirthStatus')
-            death_status = person_data.get('PersonDateOfDeathStatus')
+            birth_date = person_data.get('PersonDateOfBirth') or None
+            death_date = person_data.get('PersonDateOfDeath') or None
+            birth_status = None
+            death_status = None
+            if 'PersonDateOfBirthStatus' in person_data:
+                birth_status = _parse_date_status(
+                    person_data.get('PersonDateOfBirthStatus'),
+                    'PersonDateOfBirthStatus',
+                    birth_date,
+                    1 if birth_date is not None else 3,
+                )
+            if 'PersonDateOfDeathStatus' in person_data:
+                death_status = _parse_date_status(
+                    person_data.get('PersonDateOfDeathStatus'),
+                    'PersonDateOfDeathStatus',
+                    death_date,
+                    1 if death_date is not None else 3,
+                )
             
             # Use relation IDs from request (frontend now sends these)
             person_is_male = person_data.get('PersonIsMale')
@@ -1354,6 +1434,20 @@ def add_person(
     try:
         with engine.connect() as connection:
             is_male = person_data.get('PersonIsMale')
+            birth_date = person_data.get('PersonDateOfBirth') or None
+            death_date = person_data.get('PersonDateOfDeath') or None
+            birth_status = _parse_date_status(
+                person_data.get('PersonDateOfBirthStatus'),
+                'PersonDateOfBirthStatus',
+                birth_date,
+                1 if birth_date is not None else 3,
+            )
+            death_status = _parse_date_status(
+                person_data.get('PersonDateOfDeathStatus'),
+                'PersonDateOfDeathStatus',
+                death_date,
+                1 if death_date is not None else None,
+            )
             
             # Call AddPerson_v2 so the new PersonID is returned in the first result set.
             try:
@@ -1384,8 +1478,8 @@ def add_person(
                         "motherId": person_data.get('MotherId') or None,
                         "fatherId": person_data.get('FatherId') or None,
                         "partnerId": person_data.get('PartnerId') or None,
-                        "birthStatus": person_data.get('PersonDateOfBirthStatus', 0),
-                        "deathStatus": person_data.get('PersonDateOfDeathStatus', 0),
+                        "birthStatus": birth_status,
+                        "deathStatus": death_status,
                     }
                 )
                 results = results_proxy.fetchall()
@@ -1483,7 +1577,7 @@ def add_new_parent_to_child(
     try:
         with engine.connect() as connection:
             results_proxy = connection.execute(
-                text("""call AddNewParentToChild(
+                text("""call AddNewParentToChild_v2(
                     :kindId,
                     :gender,
                     :givenName,
@@ -1494,7 +1588,10 @@ def add_new_parent_to_child(
                     :deathPlace,
                     :partnerId,
                     :marriageDate,
-                    :marriagePlace
+                    :marriagePlace,
+                    :birthDateStatus,
+                    :deathDateStatus,
+                    :marriageDateStatus
                 )"""),
                 parameters,
             )

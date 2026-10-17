@@ -109,6 +109,7 @@ class TestMarriageEndpoints:
                 "personAId": 11,
                 "personBId": 22,
                 "startDate": "2026-04-16",
+                "startDateStatus": 2,
                 "marriagePlace": "Amsterdam",
             },
             cookies={"familiez_session": "ok"},
@@ -118,7 +119,8 @@ class TestMarriageEndpoints:
 
         call_args = mock_connection.execute.call_args
         assert call_args is not None
-        assert "AddMarriage_v2" in str(call_args[0][0])
+        assert "AddMarriage_v3" in str(call_args[0][0])
+        assert call_args[0][1]["startDateStatus"] == 2
         assert call_args[0][1]["marriagePlace"] == "Amsterdam"
 
     @patch("main.engine")
@@ -215,6 +217,7 @@ class TestMarriageEndpoints:
                 "personAId": 11,
                 "personBId": 22,
                 "endDate": "2026-04-01",
+                "endDateStatus": 2,
                 "endReason": "scheiding",
             },
             cookies={"familiez_session": "ok"},
@@ -222,6 +225,9 @@ class TestMarriageEndpoints:
 
         assert response.status_code == 422
         assert response.json()["detail"] == "Einddatum kan niet voor de startdatum liggen"
+        end_call_args = mock_connection.execute.call_args_list[1]
+        assert "EndMarriage_v2" in str(end_call_args.args[0])
+        assert end_call_args.args[1]["endDateStatus"] == 2
         mock_connection.rollback.assert_called_once()
 
     @patch("main.engine")
@@ -305,6 +311,7 @@ class TestMarriageEndpoints:
                 "personAId": 11,
                 "personBId": 33,
                 "startDate": "2026-04-20",
+                "startDateStatus": 2,
                 "marriagePlace": "Den Haag",
             },
             cookies={"familiez_session": "ok"},
@@ -314,7 +321,8 @@ class TestMarriageEndpoints:
 
         call_args = mock_connection.execute.call_args
         assert call_args is not None
-        assert "UpdateMarriageStartDate_v2" in str(call_args[0][0])
+        assert "UpdateMarriageStartDate_v3" in str(call_args[0][0])
+        assert call_args[0][1]["startDateStatus"] == 2
         assert call_args[0][1]["marriagePlace"] == "Den Haag"
 
     @patch("main.engine")

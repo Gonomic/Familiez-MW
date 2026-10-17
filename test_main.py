@@ -883,8 +883,8 @@ class TestPersonWriteEndpoints:
 
         call_args = mock_connection.execute.call_args_list[0]
         assert 'AddPerson_v2' in str(call_args[0][0])
-        assert call_args[0][1]['birthStatus'] == 0
-        assert call_args[0][1]['deathStatus'] == 0
+        assert call_args[0][1]['birthStatus'] == 1
+        assert call_args[0][1]['deathStatus'] is None
 
 
 class TestAddNewParentToChildEndpoint:
@@ -938,11 +938,14 @@ class TestAddNewParentToChildEndpoint:
             "givenName": "Jan",
             "familyName": "Jansen",
             "birthDate": date(1900, 1, 1),
+            "birthDateStatus": 1,
             "birthPlace": "Utrecht",
             "deathDate": None,
+            "deathDateStatus": None,
             "deathPlace": None,
             "partnerId": None,
             "marriageDate": None,
+            "marriageDateStatus": None,
             "marriagePlace": None,
         }
 
@@ -1007,11 +1010,14 @@ class TestAddNewParentToChildEndpoint:
                 "Voornaam": "Anna",
                 "Achternaam": "Jansen",
                 "Geboortedatum": "1901-02-03",
+                "GeboortedatumStatus": 2,
                 "Geboorteplaats": "Leiden",
                 "Overlijdensdatum": "1980-04-05",
+                "OverlijdensdatumStatus": 2,
                 "Overlijdensplaats": "Delft",
                 "PartnerId": 22,
                 "Huwelijksdatum": "1920-06-07",
+                "HuwelijksdatumStatus": 2,
                 "Huwelijksplaats": "Rotterdam",
             },
         )
@@ -1024,11 +1030,14 @@ class TestAddNewParentToChildEndpoint:
             "givenName": "Anna",
             "familyName": "Jansen",
             "birthDate": date(1901, 2, 3),
+            "birthDateStatus": 2,
             "birthPlace": "Leiden",
             "deathDate": date(1980, 4, 5),
+            "deathDateStatus": 2,
             "deathPlace": "Delft",
             "partnerId": 22,
             "marriageDate": date(1920, 6, 7),
+            "marriageDateStatus": 2,
             "marriagePlace": "Rotterdam",
         }
 
