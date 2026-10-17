@@ -973,7 +973,7 @@
       "signatureHash": "sha256:39794d51f445370588da7bae10491fdcf844e2f4e18800ee17b149e183c75513"
     }
   ],
-  "generatedAt": "2026-10-17T12:05:26Z",
-  "sourceCommit": "f3a4f8f26209f0440ee9f6674acf84af0fb69bbb",
+  "generatedAt": "2026-10-17T12:12:39Z",
+  "sourceCommit": "437e40c88883eb77fd01e33677b7adc04a483f80",
   "version": "6.1.0"
 }
